@@ -24,8 +24,7 @@ def get_cursor(db_filename = '/rubin/cst_repos/tutorial-notebooks-data/data/lsst
     return cursor
     
 
-
-def lsstcam_mask(pointing_ra, pointing_dec, ra_vals, dec_vals, rot_vals, camera, d_t=4, samp=0.01):
+def ra_dec_flatgrid(pointing_ra, pointing_dec, d_t, samp=0.01):
 
     radius = d_t/2
 
@@ -41,34 +40,44 @@ def lsstcam_mask(pointing_ra, pointing_dec, ra_vals, dec_vals, rot_vals, camera,
     ra  = ra.flatten()
     dec = dec.flatten()
 
+    return ra, dec
+
+
+def lsstcam_mask(ra, dec, ra_vals, dec_vals, rot_vals, camera):
+
     mask = np.zeros(len(ra))
 
     for i in range(0,len(ra_vals)):
         idx_visit = camera(ra, dec, ra_vals[i], dec_vals[i], rot_vals[i])
         mask[idx_visit] = mask[idx_visit] + 1
 
-    return mask, ra, dec
+    return mask
 
 
-def run_query(RA_t, dec_t, band, cursor, d_t=4):
+def run_query(RA_t, dec_t, d_t, band, tmjd, cursor):
 
     RA_min = str(RA_t - d_t)
     RA_max = str(RA_t + d_t)
     dec_min = str(dec_t - d_t)
     dec_max = str(dec_t + d_t)
     
-    query = """SELECT fieldRA, fieldDec, rotSkyPos, band, observationId, seq_num FROM observations
+    query = """SELECT fieldRA, fieldDec, rotSkyPos, band, observationId, seq_num, obs_end_mjd FROM observations
                WHERE fieldRA < """+RA_max+"""  AND fieldRA > """+RA_min+""" 
-                AND fieldDec < """+dec_max+""" AND fieldDec > """+dec_min+""" 
+                AND fieldDec < """+dec_max+""" AND fieldDec > """+dec_min+"""
+                AND obs_end_mjd < """+str(tmjd)+"""
                 AND band = """+band+"""; """
 
     cursor.execute(query)
     results = cursor.fetchall()
     print("Number of observations found for band ",band, ":",  len(results))
-    #print(results)
 
-    ra_vals  = np.array(np.array(results)[:,0],dtype=float)
-    dec_vals = np.array(np.array(results)[:,1],dtype=float)
-    rot_vals = np.array(np.array(results)[:,2],dtype=float)
+    if len(results) > 0:
+        ra_vals  = np.array(np.array(results)[:,0],dtype=float)
+        dec_vals = np.array(np.array(results)[:,1],dtype=float)
+        rot_vals = np.array(np.array(results)[:,2],dtype=float)
+    else:
+        ra_vals  = []
+        dec_vals = []
+        rot_vals = []
 
     return ra_vals, dec_vals, rot_vals
