@@ -3,11 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import sqlite3
-from rubin_scheduler.utils import LsstCameraFootprint, _angular_separation
-
 
 def get_camera(os_env = '/rubin/rubin_sim_data'):
 
+    from rubin_scheduler.utils import LsstCameraFootprint, _angular_separation
     print('Getting camera')
     os.environ['RUBIN_SIM_DATA_DIR'] = os_env
     camera = LsstCameraFootprint(units='degrees')
