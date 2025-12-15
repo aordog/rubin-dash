@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-#from utils.util_data import get_camera
-#from utils.util_data import get_cursor
 import sys
 import utils.util_data as util_data
+import utils.util_dashboard as dashboard
 from astropy.time import Time
 import numpy as np
 import subprocess
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+
 
 def get_data(RA_t, dec_t, d_t, ra, dec, band, tmjd, camera, cursor):
 
@@ -55,6 +53,7 @@ def write_data_filters(RA_t, dec_t, d_t, ra, dec, date, camera, cursor):
         
     return 
 
+
 def check_for_file(RA_t, dec_t, d_t, date):
 
     ls_data = subprocess.run(["ls","data"],stdout=subprocess.PIPE).stdout.splitlines()
@@ -72,56 +71,19 @@ def check_for_file(RA_t, dec_t, d_t, date):
     return file_exist
 
 
-def generate_dashboard(RA_t, dec_t, d_t, date):
+def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
 
     print('making the dashboard!')
 
-    filter_names = [["'u'", "'g'", "'r'"], ["'i'", "'z'", "'y'"]]
+    mask_data = dashboard.read_in_masks('data/'+date+'.npy')
 
-    titles = ['Filter u','Filter g','Filter r','Filter i','Filter z','Filter y',]
-
-    fig = make_subplots(
-        rows=2, cols=3,
-        subplot_titles = titles,
-        specs=[[{"type": "image"}, {"type": "image"}, {"type": "image"}],
-            [{"type": "image"}, {"type": "image"}, {"type": "image"}]],
-        vertical_spacing=0.05
-    )
-
-    for row in range(1, 3):  # rows 1 and 2
-        for col in range(1, 4):  # cols 1, 2, and 3
-
-            #mask, ra, dec = make_mask_lsstcam(RA_t, dec_t, ra_vals, dec_vals, rot_vals, d_t=d_t)
-
-            #fig.add_trace(go.Heatmap(z=mask, x=ra, y=dec, zmin=0, zmax=20,
-            #                            name=filter_names[row-1][col-1],  # Use filter name instead of "trace N"
-            #                            hovertemplate='RA: %{x}&deg;<br>Dec: %{y}&deg;<br>visits: %{z}<extra></extra>',
-            #                            colorbar=dict(outlinewidth=1, outlinecolor='black')
-            #                    ), row=row, col=col)
-                
-            fig.update_xaxes(range=[RA_t+d_t/2, RA_t-d_t/2], constrain='domain', 
-                            row=row, col=col)
-            fig.update_yaxes(range=[dec_t-d_t/2, dec_t+d_t/2],  constrain='domain', 
-                            scaleanchor=f"x{col + (row-1)*3}", 
-                            scaleratio=1, row=row, col=col)
-        
-            fig.for_each_annotation(lambda a: a.update(font_size=24, y=a.y-0.006))
-            #except:
-            #    pass
-
-    fig.update_xaxes(
-        showline=True, linewidth=1, linecolor='black', mirror=True,
-        showgrid=False, zeroline=False
-    )
-    fig.update_yaxes(
-        showline=True, linewidth=1, linecolor='black', mirror=True,
-        showgrid=False, zeroline=False
-    )
-
-    fig.update_xaxes(title_text="RA (deg.)", row=2)
-    fig.update_yaxes(title_text="Dec (deg.)", col=1)
-    fig.update_layout(height=700, width=900, showlegend=True)
-    fig.write_html("all_filters_test_new.html")
+    dashboard.make_mask_map(mask_data, 
+                            RA_t, 
+                            dec_t, 
+                            d_t, 
+                            date, 
+                            file_out)
+    
 
     return
 
@@ -165,7 +127,8 @@ def main(only_write_data = False):
         generate_dashboard(float(sys.argv[2]), 
                            float(sys.argv[3]), 
                            float(sys.argv[4]),
-                           sys.argv[1])
+                           sys.argv[1],
+                           "all_filters_test_new.html")
 
         
         
