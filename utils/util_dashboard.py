@@ -62,4 +62,22 @@ def make_mask_map(mask_data, RA_t, dec_t, d_t, date, file_out):
     fig.update_layout(height=700, width=900, showlegend=True)
     fig.write_html(file_out)
 
+    add_html_refresh(file_out)
+
+    return
+
+
+def add_html_refresh(file_in):
+
+    with open(file_in, 'r') as file:
+        lines = file.readlines()
+
+    with open(file_in, 'w') as file:
+        for line in lines:
+            if line.startswith('<head>'):
+                print('adding refresh to html')
+                file.write(line.strip()+'\n'+'<head><meta http-equiv="refresh" content="5" /></head>'+'\n')
+            else:
+                file.write(line)
+
     return
