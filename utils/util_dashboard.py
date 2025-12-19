@@ -16,6 +16,8 @@ def read_in_masks(file_in):
 
 def make_mask_map(mask_data, RA_t, dec_t, d_t, date, file_out):
 
+    print(date)
+
     filter_names = [['u', 'g', 'r'], ['i', 'z', 'y']]
     titles = ['Filter u','Filter g','Filter r','Filter i','Filter z','Filter y',]
 
@@ -62,10 +64,13 @@ def make_mask_map(mask_data, RA_t, dec_t, d_t, date, file_out):
 
     fig.update_xaxes(title_text="RA (deg.)", row=2)
     fig.update_yaxes(title_text="Dec (deg.)", col=1)
-    fig.update_layout(height=700, width=900, showlegend=True)
+    fig.update_layout(height=700, width=900, showlegend=True, 
+                      title_text=date,title_font_size=30)
+
+
     fig.write_html(file_out)
 
-    add_html_refresh(file_out)
+    #add_html_refresh(file_out)
 
     return
 
