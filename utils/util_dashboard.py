@@ -27,13 +27,16 @@ def make_mask_map(mask_data, RA_t, dec_t, d_t, date, file_out):
         vertical_spacing=0.05
     )
 
+    Nmax = int(np.nanmax([mask_data['u'],mask_data['g'],mask_data['r'],
+                      mask_data['i'],mask_data['z'],mask_data['y']]))
+    print(Nmax)
     for row in range(1, 3):  # rows 1 and 2
         for col in range(1, 4):  # cols 1, 2, and 3
 
             fig.add_trace(go.Heatmap(z=mask_data[filter_names[row-1][col-1]], 
                                      x=mask_data['ra'], 
                                      y=mask_data['dec'], 
-                                     zmin=0, zmax=20,
+                                     zmin=0, zmax=Nmax,
                                      name=filter_names[row-1][col-1], 
                                      hovertemplate='RA: %{x}&deg;<br>Dec: %{y}&deg;<br>visits: %{z}<extra></extra>',
                                      colorbar=dict(outlinewidth=1, outlinecolor='black')
