@@ -88,9 +88,9 @@ def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
     return
 
 
-def main(only_write_data = False):
+def main(make_dash = True):
 
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 5:
         print("Must provide: date ('yyyy-mm-dd') RA (deg) dec (deg) width (deg)")
     else:
         print(f"Date: {sys.argv[1]}")
@@ -98,10 +98,9 @@ def main(only_write_data = False):
         print(f"dec: {sys.argv[3]} degrees")
         print(f"Width of patch: {sys.argv[4]} degrees")
 
-        print('num arguments', len(sys.argv))
-
         if len(sys.argv) > 5:
-            only_write_data = sys.argv[5]
+            if sys.argv[5] == 'False':
+                make_dash = False
 
         # Make array of RA and dec grid values:
         ra, dec = util_data.ra_dec_flatgrid(float(sys.argv[2]), 
@@ -115,6 +114,9 @@ def main(only_write_data = False):
 
         if file_exist == False:
 
+            if make_dash == False:
+                print('Only writing data file...')
+
             # Get camera and cursor
             camera = util_data.get_camera()
             cursor = util_data.get_cursor()
@@ -127,18 +129,19 @@ def main(only_write_data = False):
                             sys.argv[1],
                             camera, 
                             cursor)
+            
 
-        if only_write_data:
-
-            print('Only writing data file...')
-
-        else:
-        
+        if make_dash:
+    
             generate_dashboard(float(sys.argv[2]), 
                                float(sys.argv[3]), 
                                float(sys.argv[4]),
                                sys.argv[1],
                                "all_filters_test_new.html")
+
+        else:
+            if file_exist:
+                print('Dashboard creation is OFF - doing nothing')
 
         
         
