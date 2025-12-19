@@ -62,10 +62,10 @@ def check_for_file(RA_t, dec_t, d_t, date):
         files.append(file.strip().decode("utf-8").strip('.npy'))
 
     if date in files:
-        print('data exists')
+        print('Data file exists')
         file_exist = True
     else:
-        print('need to get data - NOT LINKED YET')
+        print('Need to produce data file...')
         file_exist = False
 
     return file_exist
@@ -73,7 +73,7 @@ def check_for_file(RA_t, dec_t, d_t, date):
 
 def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
 
-    print('making the dashboard!')
+    print('Making the dashboard!')
 
     mask_data = dashboard.read_in_masks('data/'+date+'.npy')
 
@@ -89,15 +89,17 @@ def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
 
 
 def main(only_write_data = False):
-    
 
     if len(sys.argv) < 4:
         print("Must provide: date ('yyyy-mm-dd') RA (deg) dec (deg) width (deg)")
     else:
-        print(f"Making plots for {sys.argv[1]}")
+        print(f"Date: {sys.argv[1]}")
         print(f"RA: {sys.argv[2]} degrees")
         print(f"dec: {sys.argv[3]} degrees")
         print(f"Width of patch: {sys.argv[4]} degrees")
+
+        if len(sys.argv) > 4:
+            only_write_data = sys.argv[5]
 
         # Make array of RA and dec grid values:
         ra, dec = util_data.ra_dec_flatgrid(float(sys.argv[2]), 
@@ -123,12 +125,18 @@ def main(only_write_data = False):
                             sys.argv[1],
                             camera, 
                             cursor)
-            
-        generate_dashboard(float(sys.argv[2]), 
-                           float(sys.argv[3]), 
-                           float(sys.argv[4]),
-                           sys.argv[1],
-                           "all_filters_test_new.html")
+
+        if only_write_data:
+
+            print('Only writing data file...')
+
+        else:
+        
+            generate_dashboard(float(sys.argv[2]), 
+                               float(sys.argv[3]), 
+                               float(sys.argv[4]),
+                               sys.argv[1],
+                               "all_filters_test_new.html")
 
         
         
