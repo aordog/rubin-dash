@@ -98,7 +98,9 @@ def main(only_write_data = False):
         print(f"dec: {sys.argv[3]} degrees")
         print(f"Width of patch: {sys.argv[4]} degrees")
 
-        if len(sys.argv) > 4:
+        print('num arguments', len(sys.argv))
+
+        if len(sys.argv) > 5:
             only_write_data = sys.argv[5]
 
         # Make array of RA and dec grid values:
