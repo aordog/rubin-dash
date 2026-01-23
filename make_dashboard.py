@@ -73,17 +73,28 @@ def check_for_file(RA_t, dec_t, d_t, date):
 
 def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
 
-    print('Making the dashboard!')
+    print('Making the dashboard for ',date)
 
     mask_data = dashboard.read_in_masks('data/'+date+'.npy')
 
-    dashboard.make_mask_map(mask_data, 
-                            RA_t, 
-                            dec_t, 
-                            d_t, 
-                            date, 
-                            file_out)
-    
+    dashboard.accumulate_target_visits(mask_data, 
+                                       RA_t, 
+                                       dec_t, 
+                                       'data/test_tseries.txt',
+                                       date)
+
+    fig1_html = dashboard.make_mask_map(mask_data, 
+                                        RA_t, 
+                                        dec_t, 
+                                        d_t)
+    fig2_html = dashboard.make_visits_plot('data/test_tseries.txt')
+
+    dashboard.build_html(date, 
+                         RA_t, 
+                         dec_t, 
+                         fig1_html, 
+                         fig2_html, 
+                         file_out)
 
     return
 
