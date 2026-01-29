@@ -3,6 +3,10 @@ import numpy as np
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from astropy.time import Time
+from astropy.coordinates import EarthLocation
+from astropy.coordinates import SkyCoord
+from astropy import coordinates as coord
+import ephem
 
 def read_in_masks(file_in):
 
@@ -150,7 +154,129 @@ def make_visits_plot(time_series):
     return fig_html
 
 
-def build_html(date, RA_t, dec_t, fig1_html, fig2_html, file_out):
+def make_long_forecast_plot(RA_t, dec_t, date):
+
+    loc = EarthLocation.of_site('LSST')
+    start_date = Time(date).iso
+    t  =  10.0 # days
+    dt =  1.0 # hours
+    dmjd_arr = np.arange(0, t+dt/24., dt/24.)
+    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
+
+    c = SkyCoord(RA_t, dec_t, frame='icrs', unit='deg')
+    aa_frame = coord.AltAz(obstime = t_utc, location = loc)
+    c_altaz  = c.transform_to(aa_frame)
+
+    az = c_altaz.az.deg.copy()
+    az[az > 180.] = az[az > 180.] - 360.
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        specs=[[{"type": "scatter"}],[{"type": "scatter"}]]
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=t_utc.mjd,
+            y=az,
+            mode='lines+markers',
+            name = 'azimuth',
+            marker=dict(
+                size=2,
+                color='blue',
+                symbol='circle'
+            )
+        ),
+        row=1, col=1
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=t_utc.mjd,
+            y=c_altaz.alt.deg,
+            mode='lines+markers',
+            name = 'elevation',
+            marker=dict(
+                size=2,
+                color='red',
+                symbol='circle'
+            )
+        ),
+        row=2, col=1
+    )
+
+    fig.add_hrect(
+        y0=-90, y1=15,           # horizontal lines to shade between
+        fillcolor="gray", 
+        opacity=0.8,
+        layer="above",
+        line_width=0,
+        row=2, col=1
+    )
+
+    fig.add_hrect(
+        y0=86.5, y1=90,           # horizontal lines to shade between
+        fillcolor="gray", 
+        opacity=0.8,
+        layer="above",
+        line_width=0,
+        row=2, col=1
+    )
+
+
+    #t  =  5.0 # days
+    dt =  1.0 # hours
+    days_mjd = np.arange(0, t+1.0, 1.0)
+    days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
+    obs = ephem.Observer()
+    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be in string format
+    obs.lat  = str(loc.geodetic.lat.deg)      #Note that lat should be in string format
+    obs.elev = loc.geodetic.height.value
+
+    for day in days_utc:
+ 
+        obs.date = str(day)
+        sunrise = obs.next_rising(ephem.Sun()).datetime()
+        sunset  = obs.next_setting(ephem.Sun()).datetime()
+        #print(sunrise, sunset)
+
+        fig.add_vrect(
+            x0=Time(sunrise).mjd, x1=Time(sunset).mjd,          
+            fillcolor="gray", 
+            opacity=0.8,
+            layer="above",
+            line_width=0,
+            row=1, col=1
+        )
+        fig.add_vrect(
+            x0=Time(sunrise).mjd, x1=Time(sunset).mjd,          
+            fillcolor="gray", 
+            opacity=0.8,
+            layer="above",
+            line_width=0,
+            row=2, col=1
+        )
+
+
+    fig.update_xaxes(title_text="MJD", row=1)
+    fig.update_xaxes(title_text="MJD", row=2)
+    fig.update_yaxes(title_text="Azimuth (deg.)", row=1)
+    fig.update_yaxes(title_text="Elevation (deg.)", row=2)
+    fig.update_layout(height=700, width=980, showlegend=True)
+
+    fig.update_yaxes(range=[-180, 180], row=1, col=1) 
+    fig.update_yaxes(range=[-90, 90],row=2, col=1) 
+
+    fig.update_xaxes(range=[t_utc.mjd[0], t_utc.mjd[-1]], row=1, col=1) 
+    fig.update_xaxes(range=[t_utc.mjd[0], t_utc.mjd[-1]],row=2, col=1) 
+
+    # For the second figure, we don't need to include plotly.js again
+    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
+
+    return fig_html
+
+
+def build_html(date, RA_t, dec_t, fig1_html, fig2_html, fig3_html, file_out):
 
     # Build the complete HTML document
     html_string = f"""
@@ -158,6 +284,7 @@ def build_html(date, RA_t, dec_t, fig1_html, fig2_html, file_out):
     <html>
     <head>
         <meta charset="utf-8">
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
         <title>Mask Maps - {date}</title>
         <style>
             body {{
@@ -191,7 +318,7 @@ def build_html(date, RA_t, dec_t, fig1_html, fig2_html, file_out):
     </head>
     <body>
         <div class="container">
-            <h1>Target: RA={RA_t}, dec={dec_t}</h1>
+            <h1>Target: RA=\\({RA_t}^{{\circ}}\\), dec=\\({dec_t}^{{\circ}}\\)</h1>
             
             <div class="figure-container">
                 <h2>Visits up to {date}</h2>
@@ -199,8 +326,15 @@ def build_html(date, RA_t, dec_t, fig1_html, fig2_html, file_out):
             </div>
             
             <div class="figure-container">
+                <h2>Progress at target</h2>
                 {fig2_html}
             </div>
+
+            <div class="figure-container">
+                <h2>Future observability of target</h2>
+                {fig3_html}
+            </div>
+
         </div>
     </body>
     </html>

@@ -88,12 +88,14 @@ def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
                                         dec_t, 
                                         d_t)
     fig2_html = dashboard.make_visits_plot('data/test_tseries.txt')
+    fig3_html = dashboard.make_long_forecast_plot(RA_t, dec_t, date)
 
     dashboard.build_html(date, 
                          RA_t, 
                          dec_t, 
                          fig1_html, 
-                         fig2_html, 
+                         fig2_html,
+                         fig3_html, 
                          file_out)
 
     return
