@@ -83,6 +83,7 @@ def generate_dashboard(RA_t, dec_t, d_t, date, file_out):
                                        'data/test_tseries.txt',
                                        date)
     
+    print('Testing change for COMET deployment')
     util_data.run_query_v2()
 
     fig1_html = dashboard.make_mask_map(mask_data, 
