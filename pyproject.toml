@@ -1,0 +1,17 @@
+[project]
+name = "rubin_dash"
+version = "0.1.0"
+description = "CanDIAPL Dashboard for Rubin LSST progress"
+readme = "README.md"
+authors = [
+    { name = "Anna Ordog", email = "aordog@uwo.ca" }
+]
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.3"]
+
+[project.scripts]
+rubin_dash = "rubin_dash:main"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"

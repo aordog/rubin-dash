@@ -80,3 +80,10 @@ def run_query(RA_t, dec_t, d_t, band, tmjd, cursor):
         rot_vals = []
 
     return ra_vals, dec_vals, rot_vals
+
+
+def run_query_v2():
+
+    print('New query function will run here...')
+
+    return
