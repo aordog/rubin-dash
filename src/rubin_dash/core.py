@@ -6,10 +6,11 @@ core.py
 """
 
 import rubin_dash.utils as utils
+import pandas as pd
 
 
 class Target:
-    """A base class for info pertaining to a single target.
+    """A class for info pertaining to a single target.
 
     Parameters
     ----------
@@ -19,62 +20,71 @@ class Target:
         The declination of the target position (in degrees).
     r_ang : float
         The radial distance from the target to search for visits.
+    name : string
+        Optional name for the target.
     """
 
-    def __init__(self, ra_t:float, dec_t:float, r_ang:float,
+    def __init__(self, ra_t:float, dec_t:float, r:float, name:str, 
                  description: str = "Target Specifics"):
         self.description = description
         self.ra_t  = ra_t
         self.dec_t = dec_t
-        self.r_ang = r_ang
+        self.r = r
+        self.name = name 
+        self.data: dict | None = None
 
-class RubinScheduleViewer(Target):
-    """A class for reading in meta data from the Rubin Schedule Viewer.
+    def get_metadata_rsv(self, date) -> dict:
 
-    This class reads in metadata from the Rubin Schedule Viewer, which is
-    currently missing the camera angle data. Thus, using this method for
-    now will not give the correct shapes of masks in the 2D mapping of visits
-    coverage. NOTE: for now the radial distance needs to be smaller than half of
-    the LSSTCam FOV width to ensure the target is within all visits read in.
+        """Read in meta data from the Rubin Schedule Viewer.
 
-    Parameters
-    ----------
-    date : string
-        The date for which to read in the meta data.
-    ra_t : float
-        The right ascension of the target position (in degrees).
-    dec_t : float
-        The declination of the target position (in degrees).
-    r_ang : float
-        The radial distance from the target to search for visits.
-    """
-    
-    def __init__(self, date: str, ra_t: float, dec_t: float, r_ang: float):
-        super().__init__(ra_t, dec_t, r_ang, description="Rubin Schedule Viewer reader")
-        self.date = date
-
-    def get_metadata_rsv(self) -> dict:
-        """Read in meta data from the Rubin Schedule Viewer using input parameters."""
+        This function reads in metadata from the Rubin Schedule Viewer, which 
+        is currently missing the camera angle data. Thus, using this method 
+        for now will not give the correct shapes of masks in the 2D mapping of 
+        visits coverage. Note: for now the radial distance needs to be smaller 
+        than half of the LSSTCam FOV width to ensure the target is within all 
+        visits read in.
         
-        return utils.get_metadata_rsv(self.date, self.ra_t, self.dec_t, self.r_ang)
+        Parameters
+        ----------
+        date : float
+            The date (in ISO format) for which to read in the data.
+        """
+        
+        self.data = utils.get_metadata_rsv(date, self.ra_t, self.dec_t,
+                                           self.r, self.data)
+        
+    def get_metadata_ppdb(self, date) -> dict:
+
+        """Read in meta data from the Prompt Products Database"""
+        pass
+
+    def get_metadata_consdb(self, date) -> dict:
+
+        """Read in meta data from the Consolidated Database"""
+        pass
 
 
-class SingleTargetPlotting(Target):
-    """A class for making plots."""
+class BasePlot:
+    """A base class for formatting the plots."""
 
-    def __init__(self, date: str, ra_t: float, dec_t: float, r_ang: float,
-                 metadata: dict):
-        super().__init__(ra_t, dec_t, r_ang, description="Single target plotting")
-        self.date = date
-        self.metadata = metadata
+    def __init__(self, description: str = "Base Plot"):
+        self.description = description
 
-    def visits_maps(self):
+
+class VisitsMap(BasePlot):
+    """A class for making the 2D visits map."""
+
+    def __init__(self, target: Target):
+        super().__init__(description="2D visits map")
+        self.target = target
+
+    def visits_maps(self, date):
         """Make the 2D map of visits to date for selected target"""
 
-        return utils.visits_maps(self.metadata, self.date, self.ra_t, self.dec_t, self.r_ang)
+        return utils.visits_maps(self.target, date)
 
 
-class BuildDashboard:
+class Dashboard:
 
     def __init__(self, date:str, ra_t:float, dec_t:float,
                  fig1_html:str, fig2_html:str, fig3_html:str, file_out:str,
@@ -94,6 +104,7 @@ class BuildDashboard:
                                 self.fig3_html, self.file_out)
     
 
+"""
 ## WORK ON THIS NEXT WEEK TO FIGURE OUT HOW TO MAKE DASHBOARD IN ONE GO
 def main(date: str, ra_t: float, dec_t: float, r_ang: float):
 
@@ -119,3 +130,5 @@ def main(date: str, ra_t: float, dec_t: float, r_ang: float):
 # -----------------------------------------------------------------------------#
 if __name__ == "__main__":
     main()
+
+"""

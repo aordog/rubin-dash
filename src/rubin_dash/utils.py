@@ -15,10 +15,11 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 
-def get_metadata_rsv(date: str, 
+def get_metadata_rsv(today: str, 
                      ra_t: float, 
                      dec_t: float, 
-                     r_ang: float) -> dict:
+                     r: float,
+                     data: dict):
     """Read in meta data from the Rubin Schedule Viewer using input parameters.
 
     See ~tutorial/Commissioning/102_rubin_schedule_viewer.ipynb for how to use
@@ -26,13 +27,13 @@ def get_metadata_rsv(date: str,
 
     Parameters
     ----------
-    date : string
+    today : string
         The date for which to read in the meta data.
     ra_t : float
         The right ascension of the target position (in degrees).
     dec_t : float
         The declination of the target position (in degrees).
-    r_ang : float
+    r     : float
         The radial distance from the target to search for visits.
 
     Returns
@@ -43,21 +44,24 @@ def get_metadata_rsv(date: str,
     """
     
     # Get the data
-    visits = rsv_service(date)
+    visits = rsv_service(today)
     
     ra  = np.array(visits["s_ra"])
     dec = np.array(visits["s_dec"])
     status = np.array(visits["execution_status"])
     obs_id = visits["obs_id"]
 
-    idxs = target_visits_idxs(ra_t, dec_t, r_ang, ra, dec, status)
+    idxs = target_visits_idxs(ra_t, dec_t, r, ra, dec, status)
 
-    metadata = {}
-    metadata['ra'] = ra[idxs]
-    metadata['dec'] = dec[idxs]
-    metadata['band'] = ["u"] * len(idxs)
+    if data is None:
+        data = {today:{}}
+    else:
+        data[today] = {}
+    data[today]['ra'] = ra[idxs]
+    data[today]['dec'] = dec[idxs]
+    data[today]['band'] = ["u"] * len(idxs)
     
-    return metadata
+    return data
 
 
 def rsv_service(date: str) -> pd.DataFrame:
@@ -92,7 +96,7 @@ def target_visits_idxs(ra_t: float,
     return np.array(np.where((dist < r_ang) & (status=='Performed'))[0])
 
 
-def visits_maps(metadata, date, ra_t, dec_t, r_ang):
+def visits_maps(target, date):
 
     filter_names = [['u', 'g', 'r'], ['i', 'z', 'y']]
     titles = ['Filter u','Filter g','Filter r','Filter i','Filter z','Filter y',]
@@ -113,8 +117,8 @@ def visits_maps(metadata, date, ra_t, dec_t, r_ang):
 
             fig.add_trace(
                 go.Scatter(
-                            x=metadata['ra'],
-                            y=metadata['dec'],
+                            x=target.data[date]['ra'],
+                            y=target.data[date]['dec'],
                             mode='markers',
                             marker=dict(
                                 size=5,
@@ -125,9 +129,9 @@ def visits_maps(metadata, date, ra_t, dec_t, r_ang):
                 row=row, col=col
             )
                 
-            fig.update_xaxes(range=[ra_t+r_ang, ra_t-r_ang], constrain='domain', 
+            fig.update_xaxes(range=[target.ra_t+target.r, target.ra_t-target.r], constrain='domain', 
                             row=row, col=col)
-            fig.update_yaxes(range=[dec_t-r_ang, dec_t+r_ang], constrain='domain', 
+            fig.update_yaxes(range=[target.dec_t-target.r, target.dec_t+target.r], constrain='domain', 
                             scaleanchor=f"x{col + (row-1)*3}", 
                             scaleratio=1, row=row, col=col)
         

@@ -1,18 +1,21 @@
-from rubin_dash.core import RubinScheduleViewer, SingleTargetPlotting, BuildDashboard
+from rubin_dash.core import Target, VisitsMap, Dashboard
+import time
 
-date  = '2025-09-25'
 ra_t  = 350.0
 dec_t = -7.0
-r_ang = 2.0
+r_ang = 1.5
+name = ' '
 
-rsv = RubinScheduleViewer(date, ra_t, dec_t, r_ang)
-metadata = rsv.get_metadata_rsv()
+rsv = Target(ra_t, dec_t, r_ang, name)
 
-print(metadata['ra'])
-print(len(metadata['ra']))
+for date in ['2025-09-25', '2025-09-26', '2025-09-27']:
 
-target_plots = SingleTargetPlotting(date, ra_t, dec_t, r_ang, metadata)
-fig_html = target_plots.visits_maps()
-
-dash = BuildDashboard(date, ra_t, dec_t, fig_html, fig_html, fig_html, 'new_file.html')
-dash.build_html()
+    rsv.get_metadata_rsv(date)
+    #print(rsv.data.keys())
+    print(len(rsv.data[date]['ra']))
+    target_plots = VisitsMap(rsv)
+    fig_html = target_plots.visits_maps(date)
+    dash = Dashboard(date, ra_t, dec_t, fig_html, fig_html, fig_html, 'new_file2.html')
+    dash.build_html()
+    time.sleep(5)
+    print('')
