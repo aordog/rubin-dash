@@ -64,6 +64,26 @@ class Target:
         pass
 
 
+class SummaryTable:
+    """A class for assembling the targets into a table.
+
+    Parameters
+    ----------
+    target_set : list
+        The list of Target objects.
+    """
+
+    def __init__(self, target_set:list,
+                 description: str = "Summary of all targets"):
+        self.description = description
+        self.target_set  = target_set
+
+    def make_table(self) -> pd.DataFrame:
+
+        return utils.make_table(self.target_set)
+
+
+
 class BasePlot:
     """A base class for formatting the plots."""
 
@@ -87,7 +107,8 @@ class VisitsMap(BasePlot):
 class Dashboard:
 
     def __init__(self, date:str, ra_t:float, dec_t:float,
-                 fig1_html:str, fig2_html:str, fig3_html:str, file_out:str,
+                 fig1_html:str, fig2_html:str, fig3_html:str, 
+                 table:pd.DataFrame, file_out:str,
                  description: str = "Build Dashboard"):
         self.description = description
         self.date  = date
@@ -96,12 +117,14 @@ class Dashboard:
         self.fig1_html = fig1_html
         self.fig2_html = fig2_html
         self.fig3_html = fig3_html
+        self.table = table
         self.file_out  = file_out
 
     def build_html(self):
         return utils.build_html(self.date, self.ra_t, self.dec_t, 
                                 self.fig1_html, self.fig2_html, 
-                                self.fig3_html, self.file_out)
+                                self.fig3_html, 
+                                self.table, self.file_out)
     
 
 """
