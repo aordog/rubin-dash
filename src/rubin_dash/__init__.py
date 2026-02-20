@@ -1,5 +1,5 @@
 from . import utils
-from .core import RubinScheduleViewer
+from .core import Target
 #from .test import test
 
 try:
