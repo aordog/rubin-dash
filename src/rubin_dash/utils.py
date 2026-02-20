@@ -60,7 +60,21 @@ def get_metadata_rsv(today: str,
     data[today]['ra'] = ra[idxs]
     data[today]['dec'] = dec[idxs]
     data[today]['band'] = ["u"] * len(idxs)
+
+    data = count_visits(today, data)
     
+    return data
+
+
+def count_visits(today: str, data: dict):
+
+    for band in ['u','g','r','i','z','y']:
+        idx_band = np.where(np.array(data[today]['band']) == band)
+        if idx_band != None:
+            data[today][band+'visits'] = len(idx_band[0])
+        else:
+            data[today][band+'visits'] = 0
+
     return data
 
 
@@ -94,6 +108,31 @@ def target_visits_idxs(ra_t: float,
     dist = np.sqrt((ra_t-ra)**2 + ((dec_t-dec)*np.cos(dec_t*np.pi/180.))**2)
 
     return np.array(np.where((dist < r_ang) & (status=='Performed'))[0])
+
+
+def make_table(target_set):
+
+    id = [f"{i:02d}" for i in range(1, len(target_set)+1)]
+
+    bands = ["u", "g", "r", "i", "z", "y"]
+
+    visits_dict = {}
+    for band in bands:
+        visits_dict[band] = total_visits(target_set, band)
+
+    table = pd.DataFrame(visits_dict, index=id)
+    table.index.name = "Target ID"
+
+    return table
+
+
+def total_visits(target_set, band):
+
+    visits = []
+    for target in target_set:
+        visits.append(sum(d[band+"visits"] for d in target.data.values()))
+
+    return visits
 
 
 def visits_maps(target, date):
@@ -158,7 +197,9 @@ def visits_maps(target, date):
     return fig_html
 
 
-def build_html(date, ra_t, dec_t, fig1_html, fig2_html, fig3_html, file_out):
+def build_html(date, ra_t, dec_t, fig1_html, fig2_html, fig3_html, df, file_out):
+
+    table_html = df.to_html(classes="data-table", border=0)
 
     # Build the complete HTML document
     html_string = f"""
@@ -196,11 +237,40 @@ def build_html(date, ra_t, dec_t, fig1_html, fig2_html, fig3_html, file_out):
                 border-radius: 5px;
                 background-color: white;
             }}
+                        .data-table {{
+                border-collapse: collapse;
+                margin: 20px auto;
+                font-size: 16px;
+            }}
+            .data-table th {{
+                background-color: #4a7abc;
+                color: white;
+                padding: 8px 12px;
+                text-align: center;
+            }}
+            .data-table td {{
+                padding: 8px 12px;
+                border-bottom: 1px solid #ddd;
+                text-align: center;
+            }}
+            .data-table tr:hover {{
+                background-color: #f5f5f5;
+            }}
+            .data-table tr.clickable:hover {{
+                background-color: #d0e4ff;
+                cursor: pointer;
+            }}
         </style>
     </head>
     <body>
         <div class="container">
             <h1>Target: RA=\\({ra_t}^{{\circ}}\\), dec=\\({dec_t}^{{\circ}}\\)</h1>
+
+            <div class="figure-container">
+                <h2>Observation Summary</h2>
+                {table_html}
+            </div>
+
             
             <div class="figure-container">
                 <h2>Visits up to {date}</h2>
@@ -218,6 +288,22 @@ def build_html(date, ra_t, dec_t, fig1_html, fig2_html, fig3_html, file_out):
             </div>
 
         </div>
+        <script>
+            document.querySelectorAll('.data-table tbody tr').forEach((row, index) => {{
+                row.classList.add('clickable');
+                row.addEventListener('click', () => {{
+                    fetch('/row_clicked', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{index: index}})
+                    }})
+                    .then(res => res.json())
+                    .then(data => {{
+                        row.style.backgroundColor = '#afd6a7';
+                    }});
+                }});
+            }});
+        </script>
     </body>
     </html>
     """
@@ -228,4 +314,4 @@ def build_html(date, ra_t, dec_t, fig1_html, fig2_html, fig3_html, file_out):
 
     #    add_html_refresh(file_out)
 
-    return
+    return html_string
