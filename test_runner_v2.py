@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 import webbrowser
 from rubin_dash.core import Target, VisitsMap, Dashboard, SummaryTable
 import threading
@@ -30,15 +30,21 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    dash = Dashboard(date, ra_t, dec_t, fig_html, fig_html, fig_html, table, 'new_file2.html')
-    html = dash.build_html()
-    return html
+    #dash = Dashboard(date, ra_t, dec_t, fig_html, fig_html, fig_html, table, 'new_file2.html')
+    #html = dash.build_html()
+    table_html = table.to_html(classes="data-table", border=0, index=False)
+    return render_template('index.html', date=date,fig1_html=fig_html, fig2_html=fig_html,
+                           ra_t=ra_t, dec_t=dec_t, table_html=table_html)
 
 @app.route("/row_clicked", methods=["POST"])
 def row_clicked():
     index = request.json["index"]
     print(f"Row {index} was clicked!")
-    return jsonify({"status": "ok"})
+
+    target_plots = VisitsMap(target_set[index])
+    fig_html_new = target_plots.visits_maps(date)
+
+    return jsonify({"status": "ok", "fig1_html": fig_html_new})
 
 if __name__ == "__main__":
     threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()
