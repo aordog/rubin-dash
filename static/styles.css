@@ -1,0 +1,57 @@
+body {
+    background: lavender;
+    color: darkblue;
+    font-family: Arial, sans-serif;
+    margin: 30px;
+}
+h1 {
+    text-align: center;
+    font-size: 36px;
+}
+h2 {
+    font-size: 30px;
+    padding-left: 20px;
+    padding-top: 0px;
+}
+
+.figure-container {
+    padding: 10px;
+    margin: 30px;
+    border: 1px solid black;
+    border-radius: 10px;
+    background-color: white;
+}
+
+.data-table {
+    border-collapse: collapse;
+    margin: 20px auto;
+    font-size: 16px;
+    border: 1px solid black;
+}
+.data-table th {
+    background-color: lavender;
+    color: darkblue;
+    padding: 12px 16px;
+    text-align: center;
+    border: 1px solid black;
+}
+.data-table td {
+    padding: 12px 16px;
+    border: 1px solid black;
+    text-align: center;
+}
+.data-table td:first-child {
+    background-color: lavender;
+    color: darkblue;
+    font-weight: bold;
+}
+.data-table tr.clickable:hover {
+    background-color: lightcyan;
+    cursor: pointer;
+}
+.data-table tr.selected td {
+    background-color: rgb(180, 255, 180);
+}
+.data-table tr.selected td:first-child {
+    background-color: rgb(50, 189, 110);  
+}

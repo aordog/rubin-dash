@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href='/static/styles.css'/>
+</head>
+<body>
+    <div class="container">
+
+        <h1>Target: RA={{ra_t | safe}}, dec={{dec_t | safe}}</h1>
+
+        <div class="figure-container">
+            <h2>Observation Summary</h2>
+            {{table_html | safe}}
+        </div>
+
+        <div class="figure-container" id="fig1-container">
+            <h2>Visits up to {{date | safe}}</h2>
+            <div id="fig1-content">
+                {{ fig1_html | safe }}
+            </div>
+        </div>
+        
+        <div class="figure-container">
+            <h2>Progress at target</h2>
+            {{ fig2_html | safe }}
+        </div>
+
+        <div class="figure-container">
+            <h2>Future observability of target</h2>
+            {{ fig3_html | safe }}
+        </div>
+    </div>
+
+    <script>
+    {% raw %}
+        const rows = document.querySelectorAll('.data-table tbody tr');
+
+        rows.forEach((row, index) => {
+            row.classList.add('clickable');
+            row.addEventListener('click', () => {
+                // Update highlighting immediately
+                rows.forEach(r => r.classList.remove('selected'));
+                row.classList.add('selected');
+
+                // Then send the request
+                fetch('/row_clicked', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({index: index})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const container = document.getElementById('fig1-content');
+                    container.innerHTML = data.fig1_html;
+
+                    // Find and re-execute any script tags
+                    container.querySelectorAll('script').forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        newScript.textContent = oldScript.textContent;
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
+                })
+                .catch(err => console.error('Fetch error:', err));
+            });
+        });
+    {% endraw %}
+    </script>
+
+</body>
+</html>
