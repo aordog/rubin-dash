@@ -122,6 +122,7 @@ def make_table(target_set):
 
     table = pd.DataFrame(visits_dict, index=id)
     table.index.name = "Target ID"
+    table = table.reset_index() # moves "Target ID" into a normal column
 
     return table
 
