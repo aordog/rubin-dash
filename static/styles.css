@@ -55,3 +55,9 @@ h2 {
 .data-table tr.selected td:first-child {
     background-color: rgb(50, 189, 110);  
 }
+#table-container {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: white;
+}
