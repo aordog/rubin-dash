@@ -91,8 +91,8 @@ class BasePlot:
         self.description = description
 
 
-class VisitsMap(BasePlot):
-    """A class for making the 2D visits map."""
+class VisitsFigures(BasePlot):
+    """A class for making visits figures."""
 
     def __init__(self, target: Target):
         super().__init__(description="2D visits map")
@@ -102,6 +102,11 @@ class VisitsMap(BasePlot):
         """Make the 2D map of visits to date for selected target"""
 
         return utils.visits_maps(self.target, date)
+    
+    def visits_plots(self):
+        """Make the plot of visits versus time for selected target"""
+
+        return utils.visits_plots(self.target)
 
 
 class Dashboard:
@@ -126,32 +131,3 @@ class Dashboard:
                                 self.fig3_html, 
                                 self.table, self.file_out)
     
-
-"""
-## WORK ON THIS NEXT WEEK TO FIGURE OUT HOW TO MAKE DASHBOARD IN ONE GO
-def main(date: str, ra_t: float, dec_t: float, r_ang: float):
-
-    print('-----------------------------')
-    print('Making dashboard up to '+date)
-
-    rsv = RubinScheduleViewer(date, ra_t, dec_t, r_ang)
-    metadata = rsv.get_metadata_rsv()
-
-    print(metadata['ra'])
-    print(len(metadata['ra']) + ' observations today.')
-
-    target_plots = SingleTargetPlotting(date, ra_t, dec_t, r_ang, metadata)
-    fig_html = target_plots.visits_maps()
-
-    dash = BuildDashboard(date, ra_t, dec_t, fig_html, fig_html, fig_html, 'new_file.html')
-    dash.build_html()
-    print('-----------------------------')
-
-    return
-    
-
-# -----------------------------------------------------------------------------#
-if __name__ == "__main__":
-    main()
-
-"""
