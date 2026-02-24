@@ -7,9 +7,9 @@
 <body>
     <div class="container">
 
-        <h1>Target: RA={{ra_t | safe}}, dec={{dec_t | safe}}</h1>
+        <h1>Rubin LSST progress</h1>
 
-        <div class="figure-container">
+        <div class="figure-container" id="table-container">
             <h2>Observation Summary</h2>
             {{table_html | safe}}
         </div>
@@ -21,9 +21,11 @@
             </div>
         </div>
         
-        <div class="figure-container">
+        <div class="figure-container" id="fig2-container">
             <h2>Progress at target</h2>
-            {{ fig2_html | safe }}
+            <div id="fig2-content">
+                {{ fig2_html | safe }}
+            </div>
         </div>
 
         <div class="figure-container">
@@ -51,20 +53,40 @@
                 })
                 .then(res => res.json())
                 .then(data => {
-                    const container = document.getElementById('fig1-content');
-                    container.innerHTML = data.fig1_html;
+                    // Update figure 1
+                    const container1 = document.getElementById('fig1-content');
+                    container1.innerHTML = data.fig1_html;
+                    container1.querySelectorAll('script').forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        newScript.textContent = oldScript.textContent;
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
 
-                    // Find and re-execute any script tags
-                    container.querySelectorAll('script').forEach(oldScript => {
+                    // Update figure 2
+                    const container2 = document.getElementById('fig2-content');
+                    container2.innerHTML = data.fig2_html;
+                    container2.querySelectorAll('script').forEach(oldScript => {
                         const newScript = document.createElement('script');
                         newScript.textContent = oldScript.textContent;
                         oldScript.parentNode.replaceChild(newScript, oldScript);
                     });
                 })
+
                 .catch(err => console.error('Fetch error:', err));
             });
         });
     {% endraw %}
+    </script>
+
+    <script>
+    const loadedVersion = {{ version }};
+    setInterval(async () => {
+        const resp = await fetch("/check_update");
+        const data = await resp.json();
+        if (data.version > loadedVersion) {
+            location.reload();
+        }
+    }, 1000);
     </script>
 
 </body>
