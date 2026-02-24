@@ -117,6 +117,13 @@ def make_table(target_set):
     bands = ["u", "g", "r", "i", "z", "y"]
 
     visits_dict = {}
+    visits_dict['RA']  = []
+    visits_dict['dec'] = []
+
+    for target in target_set:
+        visits_dict['RA'].append(target.ra_t)
+        visits_dict['dec'].append(target.dec_t)
+
     for band in bands:
         visits_dict[band] = total_visits(target_set, band)
 
@@ -135,6 +142,22 @@ def total_visits(target_set, band):
 
     return visits
 
+def time_series(target):
+
+    t = []
+    Nvisits = {}
+
+    bands = ['u','g','r','i','z','y']
+    for band in bands:
+        Nvisits[band] = []
+
+    for date in target.data.keys():
+        t.append(date)
+        for band in bands:
+            Nvisits[band].append(target.data[date][band+'visits'])
+
+    return t, Nvisits
+
 
 def visits_maps(target, date):
 
@@ -151,7 +174,6 @@ def visits_maps(target, date):
     )
 
     #Nmax = 30
-
     for row in range(1, 3):  # rows 1 and 2
         for col in range(1, 4):  # cols 1, 2, and 3
 
@@ -190,129 +212,46 @@ def visits_maps(target, date):
     fig.update_yaxes(title_text="Dec (deg.)", col=1)
     fig.update_layout(height=700, width=980, showlegend=True)
 
-    # Convert figure to HTML div (not a full HTML document)
-    # include_plotlyjs='cdn' loads Plotly from the web
-    # full_html=False means we only get the <div>, not a complete HTML page
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False, div_id='figure1')
     
     return fig_html
 
+def visits_plots(target):
+ 
+    fig = make_subplots(
+        rows=1, cols=1,
+        specs=[[{"type": "scatter"}]]
+    )
 
-def build_html(date, ra_t, dec_t, fig1_html, fig2_html, fig3_html, df, file_out):
+    filter_names = ['u', 'g', 'r', 'i', 'z', 'y']
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
+    msizes = [18, 16, 14, 12, 10, 8]
 
-    table_html = df.to_html(classes="data-table", border=0)
+    t, Nvisits = time_series(target)
 
-    # Build the complete HTML document
-    html_string = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-        <title>Mask Maps - {date}</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                margin: 10px;
-                background-color: white;
-            }}
-            .container {{
-                max-width: 1000px;
-                margin: 0 auto;
-                background-color: white;
-                padding: 20px;
-            }}
-            h1 {{
-                text-align: center;
-                color: #333;
-                font-size: 36px;
-            }}
-            h2 {{
-                color: #333;
-                font-size: 30px;
-            }}
-            .figure-container {{
-                margin: 30px 0;
-                padding: 10px;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                background-color: white;
-            }}
-                        .data-table {{
-                border-collapse: collapse;
-                margin: 20px auto;
-                font-size: 16px;
-            }}
-            .data-table th {{
-                background-color: #4a7abc;
-                color: white;
-                padding: 8px 12px;
-                text-align: center;
-            }}
-            .data-table td {{
-                padding: 8px 12px;
-                border-bottom: 1px solid #ddd;
-                text-align: center;
-            }}
-            .data-table tr:hover {{
-                background-color: #f5f5f5;
-            }}
-            .data-table tr.clickable:hover {{
-                background-color: #d0e4ff;
-                cursor: pointer;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Target: RA=\\({ra_t}^{{\circ}}\\), dec=\\({dec_t}^{{\circ}}\\)</h1>
+    # Loop through and add traces
+    for color, name, s in zip(colors, filter_names, msizes):
+        #print(name)
+        fig.add_trace(
+            go.Scatter(
+                x=t,
+                y=Nvisits[name],
+                mode='lines+markers',
+                name=name,
+                marker=dict(
+                    size=s,
+                    color=color,
+                    symbol='circle'
+                )
+            ),
+            row=1, col=1
+        )
 
-            <div class="figure-container">
-                <h2>Observation Summary</h2>
-                {table_html}
-            </div>
+    fig.update_xaxes(title_text="Date", row=1)
+    fig.update_yaxes(title_text="Number of visits", col=1)
+    fig.update_layout(height=500, width=980, showlegend=True)
 
-            
-            <div class="figure-container">
-                <h2>Visits up to {date}</h2>
-                {fig1_html}
-            </div>
-            
-            <div class="figure-container">
-                <h2>Progress at target</h2>
-                {fig2_html}
-            </div>
+    # For the second figure, we don't need to include plotly.js again
+    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
 
-            <div class="figure-container">
-                <h2>Future observability of target</h2>
-                {fig3_html}
-            </div>
-
-        </div>
-        <script>
-            document.querySelectorAll('.data-table tbody tr').forEach((row, index) => {{
-                row.classList.add('clickable');
-                row.addEventListener('click', () => {{
-                    fetch('/row_clicked', {{
-                        method: 'POST',
-                        headers: {{'Content-Type': 'application/json'}},
-                        body: JSON.stringify({{index: index}})
-                    }})
-                    .then(res => res.json())
-                    .then(data => {{
-                        row.style.backgroundColor = '#afd6a7';
-                    }});
-                }});
-            }});
-        </script>
-    </body>
-    </html>
-    """
-    
-    # Write the complete HTML to file
-    with open(file_out, 'w', encoding='utf-8') as f:
-        f.write(html_string)
-
-    #    add_html_refresh(file_out)
-
-    return html_string
+    return fig_html
