@@ -63,6 +63,14 @@ class Target:
         """Read in meta data from the Consolidated Database"""
         pass
 
+    def add_mask_grid(self):
+
+        self.ra_grid, self.dec_grid = utils.add_mask_grid(self.ra_t, self.dec_t, self.r)
+
+    def lsstcam_mask(self,date):
+
+        self.data = utils.lsstcam_mask(date, self.ra_grid, self.dec_grid, self.data) 
+
 
 class SummaryTable:
     """A class for assembling the targets into a table.
