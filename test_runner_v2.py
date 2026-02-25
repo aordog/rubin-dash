@@ -25,14 +25,16 @@ name = ' '
 
 target_set = []
 for ra_t, dec_t, r_ang in zip(ra_t_list, dec_t_list, r_ang_list):
-    target_set.append(Target(ra_t, dec_t, r_ang, name))
+    target = Target(ra_t, dec_t, r_ang, name)
+    target.add_mask_grid()
+    target_set.append(target)
 
 # ---------- Background data loop ----------
 def data_loop():
 
     """Runs in a daemon thread; updates shared state every 10 seconds."""
     start = datetime.strptime('2025-09-25', '%Y-%m-%d')
-    end   = datetime.strptime('2025-10-15', '%Y-%m-%d')
+    end   = datetime.strptime('2025-10-12', '%Y-%m-%d')
     dates = [(start + timedelta(days=i)).strftime('%Y-%m-%d')
                 for i in range((end - start).days + 1)]
 
@@ -40,6 +42,7 @@ def data_loop():
 
         for target in target_set:
             target.get_metadata_rsv(date)
+            target.lsstcam_mask(date)
 
         target_plots = VisitsFigures(target_set[0]) # DEFAULTS TO FIRST TARGET (0)
         fig1_html = target_plots.visits_maps(date)
