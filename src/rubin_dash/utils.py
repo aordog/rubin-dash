@@ -13,6 +13,8 @@ import requests
 import pandas as pd
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import random # only needed for making fake bands and camera angles for now
+import os
 
 
 def get_metadata_rsv(today: str, 
@@ -59,11 +61,22 @@ def get_metadata_rsv(today: str,
         data[today] = {}
     data[today]['ra'] = ra[idxs]
     data[today]['dec'] = dec[idxs]
-    data[today]['band'] = ["u"] * len(idxs)
+    data[today]['band'] = make_fake_bands(len(idxs))
+    data[today]['rot'] = make_fake_rot(len(idxs))
 
     data = count_visits(today, data)
     
     return data
+
+def make_fake_bands(nvisits):
+
+    bands = ['u','g','r','i','z','y']
+
+    return random.choices(bands, k=nvisits)
+
+def make_fake_rot(nvisits):
+
+    return [random.uniform(0, 90) for _ in range(nvisits)]
 
 
 def count_visits(today: str, data: dict):
@@ -96,6 +109,57 @@ def rsv_service(date: str) -> pd.DataFrame:
     print(response.url)
 
     return pd.DataFrame(response.json())
+
+
+def add_mask_grid(pointing_ra, pointing_dec, radius):
+
+    samp=0.01
+
+    ra_grid = np.arange(pointing_ra - radius*np.cos(np.radians(pointing_dec)), 
+                   pointing_ra + radius, 
+                   samp * np.cos(np.radians(pointing_dec)))
+    
+    dec_grid = np.arange(pointing_dec - radius*np.cos(np.radians(pointing_dec)), 
+                    pointing_dec + radius, 
+                    samp)
+    
+    ra_grid, dec_grid = np.meshgrid(ra_grid, dec_grid)
+    ra_grid  = ra_grid.flatten()
+    dec_grid = dec_grid.flatten()
+
+    return ra_grid, dec_grid
+
+def get_camera(os_env = '/home/aordog/rubin_sim_data'):
+
+    from rubin_scheduler.utils import LsstCameraFootprint, _angular_separation
+    print('Getting camera')
+    os.environ['RUBIN_SIM_DATA_DIR'] = os_env
+    camera = LsstCameraFootprint(units='degrees')
+
+    return camera
+
+def lsstcam_mask(today: str, 
+                ra_grid: np.ndarray, 
+                dec_grid: np.ndarray,
+                data: dict):
+
+    camera = get_camera()
+
+    bands = ['u','g','r','i','z','y']
+    for band in bands:
+        data[today][band+'mask'] = np.zeros(len(ra_grid))
+        idxs = np.where(np.array(data[today]['band']) == band)[0]
+        #print(band)
+        for i in idxs:
+           #print(data[today]['ra'][i], data[today]['dec'][i], data[today]['rot'][i])
+           idx_visit = camera(ra_grid, dec_grid, 
+                              data[today]['ra'][i], 
+                              data[today]['dec'][i], 
+                              data[today]['rot'][i])
+           data[today][band+'mask'][idx_visit] = data[today][band+'mask'][idx_visit] + 1
+        #print('')
+
+    return data
 
 
 def target_visits_idxs(ra_t: float, 
@@ -173,7 +237,7 @@ def visits_maps(target, date):
         horizontal_spacing=0.01
     )
 
-    #Nmax = 30
+    Nmax = 10
     for row in range(1, 3):  # rows 1 and 2
         for col in range(1, 4):  # cols 1, 2, and 3
 
@@ -189,6 +253,22 @@ def visits_maps(target, date):
                             )
                 ),
                 row=row, col=col
+            )
+
+            fig.add_trace(go.Heatmap(z=target.data[date][filter_names[row-1][col-1]+'mask'], 
+                                     x=target.ra_grid, 
+                                     y=target.dec_grid, 
+                                     zmin=0, zmax=Nmax,
+                                     name=filter_names[row-1][col-1], 
+                                     hovertemplate='RA: %{x}&deg;<br>Dec: %{y}&deg;<br>visits: %{z}<extra></extra>',
+                                     colorbar=dict(outlinewidth=1, 
+                                                   outlinecolor='black', 
+                                                   title=dict(text='Number of visits',
+                                                                side='right',
+                                                                font=dict(size=14))
+                                            )
+                            ), 
+                            row=row, col=col
             )
                 
             fig.update_xaxes(range=[target.ra_t+target.r, target.ra_t-target.r], constrain='domain', 
