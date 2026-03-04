@@ -56,13 +56,12 @@ def get_metadata_rsv(today: str,
     idxs = target_visits_idxs(ra_t, dec_t, r, ra, dec, status)
 
     if data is None:
-        data = {today:{}}
-    else:
-        data[today] = {}
-    data[today]['ra'] = ra[idxs]
-    data[today]['dec'] = dec[idxs]
-    data[today]['band'] = make_fake_bands(len(idxs))
-    data[today]['rot'] = make_fake_rot(len(idxs))
+        data = {'daily':{}, 'total':{}}
+    data['daily'][today] = {}
+    data['daily'][today]['ra'] = ra[idxs]
+    data['daily'][today]['dec'] = dec[idxs]
+    data['daily'][today]['band'] = make_fake_bands(len(idxs))
+    data['daily'][today]['rot'] = make_fake_rot(len(idxs))
 
     data = count_visits(today, data)
     
@@ -82,11 +81,11 @@ def make_fake_rot(nvisits):
 def count_visits(today: str, data: dict):
 
     for band in ['u','g','r','i','z','y']:
-        idx_band = np.where(np.array(data[today]['band']) == band)
+        idx_band = np.where(np.array(data['daily'][today]['band']) == band)
         if idx_band != None:
-            data[today][band+'visits'] = len(idx_band[0])
+            data['daily'][today][band+'visits'] = len(idx_band[0])
         else:
-            data[today][band+'visits'] = 0
+            data['daily'][today][band+'visits'] = 0
 
     return data
 
@@ -147,17 +146,21 @@ def lsstcam_mask(today: str,
 
     bands = ['u','g','r','i','z','y']
     for band in bands:
-        data[today][band+'mask'] = np.zeros(len(ra_grid))
-        idxs = np.where(np.array(data[today]['band']) == band)[0]
-        #print(band)
+
+        data['daily'][today][band+'mask'] = np.zeros(len(ra_grid))
+        # Check for existing cumulative mask and set up if none yet:
+        if data['total'].get(band+'mask') is None:
+            #print('no cumulative data yet')
+            data['total'][band+'mask'] = np.zeros(len(ra_grid))
+
+        idxs = np.where(np.array(data['daily'][today]['band']) == band)[0]
         for i in idxs:
-           #print(data[today]['ra'][i], data[today]['dec'][i], data[today]['rot'][i])
            idx_visit = camera(ra_grid, dec_grid, 
-                              data[today]['ra'][i], 
-                              data[today]['dec'][i], 
-                              data[today]['rot'][i])
-           data[today][band+'mask'][idx_visit] = data[today][band+'mask'][idx_visit] + 1
-        #print('')
+                              data['daily'][today]['ra'][i], 
+                              data['daily'][today]['dec'][i], 
+                              data['daily'][today]['rot'][i])
+           data['daily'][today][band+'mask'][idx_visit] = data['daily'][today][band+'mask'][idx_visit] + 1
+           data['total'][band+'mask'][idx_visit] = data['total'][band+'mask'][idx_visit] + 1
 
     return data
 
@@ -202,7 +205,7 @@ def total_visits(target_set, band):
 
     visits = []
     for target in target_set:
-        visits.append(sum(d[band+"visits"] for d in target.data.values()))
+        visits.append(sum(d[band+"visits"] for d in target.data['daily'].values()))
 
     return visits
 
@@ -215,15 +218,16 @@ def time_series(target):
     for band in bands:
         Nvisits[band] = []
 
-    for date in target.data.keys():
+    for date in target.data['daily'].keys():
         t.append(date)
+
         for band in bands:
-            Nvisits[band].append(target.data[date][band+'visits'])
+            Nvisits[band].append(target.data['daily'][date][band+'visits'])
 
     return t, Nvisits
 
 
-def visits_maps(target, date):
+def visits_maps(target, date, maptype):
 
     filter_names = [['u', 'g', 'r'], ['i', 'z', 'y']]
     titles = ['Filter u','Filter g','Filter r','Filter i','Filter z','Filter y',]
@@ -243,8 +247,8 @@ def visits_maps(target, date):
 
             fig.add_trace(
                 go.Scatter(
-                            x=target.data[date]['ra'],
-                            y=target.data[date]['dec'],
+                            x=target.data['daily'][date]['ra'],
+                            y=target.data['daily'][date]['dec'],
                             mode='markers',
                             marker=dict(
                                 size=5,
@@ -255,7 +259,13 @@ def visits_maps(target, date):
                 row=row, col=col
             )
 
-            fig.add_trace(go.Heatmap(z=target.data[date][filter_names[row-1][col-1]+'mask'], 
+            if maptype == 'daily':
+                z = target.data[maptype][date][filter_names[row-1][col-1]+'mask']
+            if maptype == 'total':
+                #print('switching to total!')
+                z = target.data[maptype][filter_names[row-1][col-1]+'mask']
+
+            fig.add_trace(go.Heatmap(z=z,
                                      x=target.ra_grid, 
                                      y=target.dec_grid, 
                                      zmin=0, zmax=Nmax,
