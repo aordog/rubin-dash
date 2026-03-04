@@ -7,53 +7,84 @@
 <body>
     <div class="container">
 
-        <h1>Rubin LSST progress</h1>
+        <h1>
+            <img src="/static/candiapl-logo-dark.png" alt="Logo" class="header-logo">
+            Rubin LSST progress: {{date | safe}}
+        </h1>
 
-        <div class="figure-container" id="table-container">
-            <h2>Observation Summary</h2>
-            {{table_html | safe}}
-        </div>
+        <div class="main-layout">
 
-        <div class="figure-container" id="fig1-container">
-            <h2>Visits up to {{date | safe}}</h2>
-            <div id="fig1-content">
-                {{ fig1_html | safe }}
+            <!-- Left column: sticky table -->
+            <div class="left-column">
+                <div class="figure-container" id="table-container">
+                    <h2>Cumulative Visits Summary</h2>
+                    {{table_html | safe}}
+                </div>
+                <!-- Daily vs Cumulative toggle -->
+                <div id="maptype-buttons">
+                        <button class="maptype-btn active" data-maptype="daily" onclick="sendMapType('daily')">Daily</button>
+                        <button class="maptype-btn" data-maptype="total" onclick="sendMapType('total')">Cumulative</button>
+                    </div>
+                <!-- Countdown display -->
+                <div id="countdown-display">
+                    Next update: <span id="countdown-value">--</span>
+                </div>
             </div>
-        </div>
-        
-        <div class="figure-container" id="fig2-container">
-            <h2>Progress at target</h2>
-            <div id="fig2-content">
-                {{ fig2_html | safe }}
-            </div>
-        </div>
 
-        <div class="figure-container">
-            <h2>Future observability of target</h2>
-            {{ fig3_html | safe }}
+            <!-- Right column: scrollable plots -->
+            <div class="right-column">
+                <div class="figure-container" id="fig1-container">
+                    <h2 id="fig1-heading">Daily visits</h2>
+                    <div id="fig1-content">
+                        {{ fig1_html | safe }}
+                    </div>
+                </div>
+
+                <div class="figure-container" id="fig2-container">
+                    <h2>Progress at target</h2>
+                    <div id="fig2-content">
+                        {{ fig2_html | safe }}
+                    </div>
+                </div>
+
+                <div class="figure-container">
+                    <h2>Future observability of target</h2>
+                    {{ fig3_html | safe }}
+                </div>
+                
+            </div>
+
         </div>
     </div>
 
     <script>
     {% raw %}
+    // ---- Client-side state ----
+        let currentIndex   = 0;
+        let currentMaptype = 'daily';
+
         const rows = document.querySelectorAll('.data-table tbody tr');
 
         rows.forEach((row, index) => {
             row.classList.add('clickable');
             row.addEventListener('click', () => {
-                // Update highlighting immediately
+                // Update highlight
                 rows.forEach(r => r.classList.remove('selected'));
                 row.classList.add('selected');
 
-                // Then send the request
+                // Remember selected row
+                currentIndex = index;
+
                 fetch('/row_clicked', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({index: index})
+                    body: JSON.stringify({
+                        index:   currentIndex,
+                        maptype: currentMaptype   // <-- NEW: preserve toggle
+                    })
                 })
                 .then(res => res.json())
                 .then(data => {
-                    // Update figure 1
                     const container1 = document.getElementById('fig1-content');
                     container1.innerHTML = data.fig1_html;
                     container1.querySelectorAll('script').forEach(oldScript => {
@@ -62,7 +93,6 @@
                         oldScript.parentNode.replaceChild(newScript, oldScript);
                     });
 
-                    // Update figure 2
                     const container2 = document.getElementById('fig2-content');
                     container2.innerHTML = data.fig2_html;
                     container2.querySelectorAll('script').forEach(oldScript => {
@@ -71,7 +101,6 @@
                         oldScript.parentNode.replaceChild(newScript, oldScript);
                     });
                 })
-
                 .catch(err => console.error('Fetch error:', err));
             });
         });
@@ -87,6 +116,81 @@
             location.reload();
         }
     }, 1000);
+    </script>
+
+    <script>
+        let remaining = {{ countdown_seconds }};
+        let updating  = false;
+
+        function updateCountdown() {
+            const el = document.getElementById("countdown-value");
+            if (updating) {
+                el.textContent = "Updating...";
+            } else if (remaining > 0) {
+                el.textContent = remaining.toFixed(0) + "s";
+                remaining -= 1;
+            } else {
+                el.textContent = "0s";
+            }
+        }
+
+        function refreshCountdown() {
+            fetch("/next_update")
+                .then(r => r.json())
+                .then(data => {
+                    updating = data.updating;
+                    if (!updating) {
+                        remaining = Math.max(0, data.next_update - data.server_time);
+                    }
+                });
+        }
+
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+        setInterval(refreshCountdown, 1000);   // Poll every 1s so "Updating..." appears promptly
+    </script>
+
+    <script>
+    function sendMapType(maptype) {
+        // Remember selected toggle
+        currentMaptype = maptype;
+        updateFig1Heading();
+
+        // Update button styling
+        document.querySelectorAll('.maptype-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.maptype === maptype);
+        });
+
+        fetch("/maptype_clicked", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                maptype: currentMaptype,
+                index:   currentIndex    // <-- NEW: preserve selected row
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const container1 = document.getElementById('fig1-content');
+            container1.innerHTML = data.fig1_html;
+            container1.querySelectorAll('script').forEach(oldScript => {
+                const newScript = document.createElement('script');
+                newScript.textContent = oldScript.textContent;
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+        })
+        .catch(error => console.error("Error:", error));
+    }
+    </script>
+
+    <script>
+        const maptypeHeadings = {
+           daily: "Daily visits",
+            total: "Cumulative visits to date"
+        };
+        function updateFig1Heading() {
+            document.getElementById('fig1-heading').textContent = maptypeHeadings[currentMaptype];
+        }
     </script>
 
 </body>
