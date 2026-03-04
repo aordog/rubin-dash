@@ -2,21 +2,61 @@ body {
     background: lavender;
     color: darkblue;
     font-family: Arial, sans-serif;
-    margin: 30px;
+    margin: 15px;
 }
 h1 {
+    font-size: 50px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
     text-align: center;
-    font-size: 36px;
+    background-color: lavender;
+    z-index: 20;
+    margin: 0;
+    padding: 20px 0;
+    display: flex;              /* NEW: align logo + text side by side */
+    align-items: center;        /* NEW: vertically centre them */
+    justify-content: center;    /* NEW: horizontally centre them */
+    gap: 30px;                  /* NEW: space between logo and text */
+
 }
+
+.header-logo {
+    height: 100px;               /* Scale logo to fit the header */
+    width: auto;                /* Maintain aspect ratio */
+}
+
 h2 {
     font-size: 30px;
-    padding-left: 20px;
+    padding-left: 10px;
     padding-top: 0px;
+}
+
+.main-layout {
+    display: flex;
+    gap: 5px;
+    align-items: flex-start;
+    margin-top: 140px;          /* Push everything below the fixed h1 */
+}
+
+.left-column {
+    position: fixed;
+    top: 140px;                 /* Sits right below the h1 */
+    left: 20px;
+    width: 540px;
+    max-height: calc(100vh - 90px);  /* Fill remaining viewport height */
+    overflow-y: auto;
+}
+.right-column {
+    flex: 1;
+    min-width: 0;
+    margin-left: 545px;       /* 350px column width + 5px gap */
 }
 
 .figure-container {
     padding: 10px;
-    margin: 30px;
+    margin: 5px;
     border: 1px solid black;
     border-radius: 10px;
     background-color: white;
@@ -24,19 +64,21 @@ h2 {
 
 .data-table {
     border-collapse: collapse;
-    margin: 20px auto;
-    font-size: 16px;
+    margin: 5px auto;
+    font-size: 14px;
     border: 1px solid black;
+    table-layout: fixed;    /* Column widths no longer depend on content */
+    width: 500px;           /* Total table width — adjust to fit your layout */
 }
 .data-table th {
     background-color: lavender;
     color: darkblue;
-    padding: 12px 16px;
+    padding: 12px 12px;
     text-align: center;
     border: 1px solid black;
 }
 .data-table td {
-    padding: 12px 16px;
+    padding: 12px 12px;
     border: 1px solid black;
     text-align: center;
 }
@@ -60,4 +102,43 @@ h2 {
     top: 0;
     z-index: 100;
     background: white;
+}
+
+#countdown-display {
+    text-align: center;
+    font-size: 18px;
+    color: darkblue;
+    padding: 8px 0;
+}
+#countdown-value {
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;   /* Keeps digits fixed-width */
+}
+
+/* ---------- Map-type toggle buttons ---------- */
+#maptype-buttons {
+    text-align: center;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.maptype-btn {
+    padding: 10px 20px;
+    font-size: 18px;
+    font-weight: bold;
+    border: 2px solid darkblue;
+    border-radius: 6px;
+    background-color: white;
+    color: darkblue;
+    cursor: pointer;
+    margin: 0 4px;
+}
+
+.maptype-btn:hover {
+    background-color: lightcyan;
+}
+
+.maptype-btn.active {
+    background-color: darkblue;
+    color: white;
 }
