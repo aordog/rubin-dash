@@ -69,7 +69,12 @@ class Target:
 
     def lsstcam_mask(self,date):
 
-        self.data = utils.lsstcam_mask(date, self.ra_grid, self.dec_grid, self.data) 
+        self.data = utils.lsstcam_mask(date, self.ra_grid, self.dec_grid, self.data)
+
+    def count_target_visits(self,date):
+
+        self.data = utils.count_target_visits(date, self.ra_t, self.dec_t,
+                                              self.ra_grid, self.dec_grid, self.data)
 
 
 class SummaryTable:
@@ -111,10 +116,15 @@ class VisitsFigures(BasePlot):
 
         return utils.visits_maps(self.target, date, maptype)
     
-    def visits_plots(self):
+    def visits_plots(self, maptype):
         """Make the plot of visits versus time for selected target"""
 
-        return utils.visits_plots(self.target)
+        return utils.visits_plots(self.target, maptype)
+    
+    def make_long_forecast_plot(self, date):
+        """Make the longterm forecast plot"""
+
+        return utils.make_long_forecast_plot(date, self.target.ra_t, self.target.dec_t)
 
 
 class Dashboard:

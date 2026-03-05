@@ -49,7 +49,9 @@
 
                 <div class="figure-container">
                     <h2>Future observability of target</h2>
-                    {{ fig3_html | safe }}
+                    <div id="fig3-content">
+                        {{ fig3_html | safe }}
+                    </div>
                 </div>
                 
             </div>
@@ -96,6 +98,14 @@
                     const container2 = document.getElementById('fig2-content');
                     container2.innerHTML = data.fig2_html;
                     container2.querySelectorAll('script').forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        newScript.textContent = oldScript.textContent;
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
+
+                    const container3 = document.getElementById('fig3-content');
+                    container3.innerHTML = data.fig3_html;
+                    container3.querySelectorAll('script').forEach(oldScript => {
                         const newScript = document.createElement('script');
                         newScript.textContent = oldScript.textContent;
                         oldScript.parentNode.replaceChild(newScript, oldScript);
@@ -174,6 +184,13 @@
             const container1 = document.getElementById('fig1-content');
             container1.innerHTML = data.fig1_html;
             container1.querySelectorAll('script').forEach(oldScript => {
+                const newScript = document.createElement('script');
+                newScript.textContent = oldScript.textContent;
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+            const container2 = document.getElementById('fig2-content');
+            container2.innerHTML = data.fig2_html;
+            container2.querySelectorAll('script').forEach(oldScript => {
                 const newScript = document.createElement('script');
                 newScript.textContent = oldScript.textContent;
                 oldScript.parentNode.replaceChild(newScript, oldScript);
