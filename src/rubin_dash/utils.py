@@ -15,6 +15,11 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import random # only needed for making fake bands and camera angles for now
 import os
+from astropy.time import Time
+from astropy.coordinates import EarthLocation
+from astropy.coordinates import SkyCoord
+from astropy import coordinates as coord
+import ephem
 
 
 def get_metadata_rsv(today: str, 
@@ -63,7 +68,8 @@ def get_metadata_rsv(today: str,
     data['daily'][today]['band'] = make_fake_bands(len(idxs))
     data['daily'][today]['rot'] = make_fake_rot(len(idxs))
 
-    data = count_visits(today, data)
+    ## This is obsolete with numbers read from 2D masks instead:
+    # data = count_visits(today, data)
     
     return data
 
@@ -77,7 +83,7 @@ def make_fake_rot(nvisits):
 
     return [random.uniform(0, 90) for _ in range(nvisits)]
 
-
+# This is obsolete with numbers read from 2D masks instead.
 def count_visits(today: str, data: dict):
 
     for band in ['u','g','r','i','z','y']:
@@ -86,6 +92,23 @@ def count_visits(today: str, data: dict):
             data['daily'][today][band+'visits'] = len(idx_band[0])
         else:
             data['daily'][today][band+'visits'] = 0
+
+    return data
+
+def count_target_visits(today: str,
+                        ra_t: float, 
+                        dec_t: float,
+                        ra_grid: np.ndarray, 
+                        dec_grid: np.ndarray,
+                        data: dict):
+
+    dist = np.sqrt((ra_t-ra_grid)**2 + ((dec_t-dec_grid)*np.cos(dec_t*np.pi/180.))**2)
+
+    idx = dist.argmin()
+
+    for band in ['u','g','r','i','z','y']:
+        data['daily'][today][band+'visits_t'] = data['daily'][today][band+'mask'][idx]
+        data['total'][band+'visits_t'] = data['total'][band+'mask'][idx]
 
     return data
 
@@ -187,12 +210,18 @@ def make_table(target_set):
     visits_dict['RA']  = []
     visits_dict['dec'] = []
 
+    for band in bands:
+        visits_dict[band] = []
+
     for target in target_set:
         visits_dict['RA'].append(target.ra_t)
         visits_dict['dec'].append(target.dec_t)
 
-    for band in bands:
-        visits_dict[band] = total_visits(target_set, band)
+        for band in bands:
+            visits_dict[band].append(target.data['total'][band+'visits_t'])
+
+    #for band in bands:
+    #    visits_dict[band] = total_visits(target_set, band)
 
     table = pd.DataFrame(visits_dict, index=id)
     table.index.name = "Target ID"
@@ -200,7 +229,7 @@ def make_table(target_set):
 
     return table
 
-
+# This is obsolete with numbers read from 2D masks instead.
 def total_visits(target_set, band):
 
     visits = []
@@ -209,23 +238,39 @@ def total_visits(target_set, band):
 
     return visits
 
+
 def time_series(target):
 
     t = []
-    Nvisits = {}
+    Nvisits_daily = {}
+    Nvisits_tot   = {}
+    Nvisits_prev_tot = {}
 
     bands = ['u','g','r','i','z','y']
     for band in bands:
-        Nvisits[band] = []
+        Nvisits_prev_tot[band] = 0
+        Nvisits_daily[band] = []
+        Nvisits_tot[band] = []
 
     for date in target.data['daily'].keys():
         t.append(date)
 
         for band in bands:
-            Nvisits[band].append(target.data['daily'][date][band+'visits'])
 
-    return t, Nvisits
+            # Today's visits:
+            Nvisits_today = target.data['daily'][date][band+'visits_t']
+            Nvisits_daily[band].append(Nvisits_today)
 
+            # Total visits:
+            Nvisits_tot[band].append(Nvisits_prev_tot[band] + Nvisits_today)
+            #print(Nvisits_today, Nvisits_prev_tot[band], Nvisits_tot[band])
+
+            # Update previous total tracker:
+            Nvisits_prev_tot[band] = Nvisits_tot[band][-1].copy()
+            
+            #Nvisits_daily[band].append(target.data[maptype][date][band+'visits_t'])
+
+    return t, Nvisits_daily, Nvisits_tot
 
 def visits_maps(target, date, maptype):
 
@@ -241,23 +286,9 @@ def visits_maps(target, date, maptype):
         horizontal_spacing=0.01
     )
 
-    Nmax = 10
+    Nmax = 20
     for row in range(1, 3):  # rows 1 and 2
         for col in range(1, 4):  # cols 1, 2, and 3
-
-            fig.add_trace(
-                go.Scatter(
-                            x=target.data['daily'][date]['ra'],
-                            y=target.data['daily'][date]['dec'],
-                            mode='markers',
-                            marker=dict(
-                                size=5,
-                                color='black',
-                                symbol='circle'
-                            )
-                ),
-                row=row, col=col
-            )
 
             if maptype == 'daily':
                 z = target.data[maptype][date][filter_names[row-1][col-1]+'mask']
@@ -306,7 +337,7 @@ def visits_maps(target, date, maptype):
     
     return fig_html
 
-def visits_plots(target):
+def visits_plots(target, maptype):
  
     fig = make_subplots(
         rows=1, cols=1,
@@ -317,15 +348,21 @@ def visits_plots(target):
     colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
     msizes = [18, 16, 14, 12, 10, 8]
 
-    t, Nvisits = time_series(target)
+    t, Nvisits_daily, Nvisits_tot = time_series(target)
 
     # Loop through and add traces
     for color, name, s in zip(colors, filter_names, msizes):
+
+        if maptype == 'daily':
+            y = Nvisits_daily[name]
+        if maptype == 'total':
+            y = Nvisits_tot[name]
+
         #print(name)
         fig.add_trace(
             go.Scatter(
                 x=t,
-                y=Nvisits[name],
+                y=y,
                 mode='lines+markers',
                 name=name,
                 marker=dict(
@@ -343,5 +380,98 @@ def visits_plots(target):
 
     # For the second figure, we don't need to include plotly.js again
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
+
+    return fig_html
+
+
+def make_long_forecast_plot(date, RA_t, dec_t):
+
+    loc = EarthLocation.of_site('LSST')
+    start_date = Time(date).iso
+    t  =  10.0 # days
+    dt =  1.0 # hours
+    dmjd_arr = np.arange(0, t+dt/24., dt/24.)
+    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
+
+    c = SkyCoord(RA_t, dec_t, frame='icrs', unit='deg')
+    aa_frame = coord.AltAz(obstime = t_utc, location = loc)
+    c_altaz  = c.transform_to(aa_frame)
+
+    az = c_altaz.az.deg.copy()
+    az[az > 180.] = az[az > 180.] - 360.
+
+    fig = make_subplots(
+        rows=1, cols=1,
+        specs=[[{"type": "scatter"}]]
+    )
+
+
+    fig.add_trace(
+        go.Scatter(
+            x=t_utc.mjd,
+            y=c_altaz.alt.deg,
+            mode='lines+markers',
+            name = 'elevation',
+            marker=dict(
+                size=2,
+                color='red',
+                symbol='circle'
+            )
+        ),
+        row=1, col=1
+    )
+
+    fig.add_hrect(
+        y0=-90, y1=15,           # horizontal lines to shade between
+        fillcolor="gray", 
+        opacity=0.8,
+        layer="above",
+        line_width=0,
+        row=1, col=1
+    )
+
+    fig.add_hrect(
+        y0=86.5, y1=90,           # horizontal lines to shade between
+        fillcolor="gray", 
+        opacity=0.8,
+        layer="above",
+        line_width=0,
+        row=1, col=1
+    )
+
+
+    #t  =  5.0 # days
+    dt =  1.0 # hours
+    days_mjd = np.arange(0, t+1.0, 1.0)
+    days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
+    obs = ephem.Observer()
+    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be in string format
+    obs.lat  = str(loc.geodetic.lat.deg)      #Note that lat should be in string format
+    obs.elev = loc.geodetic.height.value
+
+    for day in days_utc:
+ 
+        obs.date = str(day)
+        sunrise = obs.next_rising(ephem.Sun()).datetime()
+        sunset  = obs.next_setting(ephem.Sun()).datetime()
+        #print(sunrise, sunset)
+
+        fig.add_vrect(
+            x0=Time(sunrise).mjd, x1=Time(sunset).mjd,          
+            fillcolor="gray", 
+            opacity=0.8,
+            layer="above",
+            line_width=0,
+            row=1, col=1
+        )
+
+    fig.update_xaxes(title_text="MJD", row=1)
+    fig.update_yaxes(title_text="Elevation (deg.)", row=1)
+    fig.update_layout(height=300, width=980, showlegend=True)
+    fig.update_yaxes(range=[-90, 90],row=1, col=1) 
+    fig.update_xaxes(range=[t_utc.mjd[0], t_utc.mjd[-1]], row=1, col=1) 
+
+    # For the second figure, we don't need to include plotly.js again
+    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
 
     return fig_html
