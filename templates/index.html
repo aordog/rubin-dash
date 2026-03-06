@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href='/static/styles.css'/>
+    <link rel="stylesheet" href='/static/css/styles.css'/>
 </head>
 <body>
     <div class="container">
@@ -59,156 +59,14 @@
         </div>
     </div>
 
-    <script>
-    {% raw %}
-    // ---- Client-side state ----
-        let currentIndex   = 0;
-        let currentMaptype = 'daily';
+    <!-- Bridge: pass Flask data to JS -->
+    <div id="server-data"
+        data-version="{{ version }}"
+        data-countdown="{{ countdown_seconds }}"
+        hidden>
+    </div>
 
-        const rows = document.querySelectorAll('.data-table tbody tr');
-
-        rows.forEach((row, index) => {
-            row.classList.add('clickable');
-            row.addEventListener('click', () => {
-                // Update highlight
-                rows.forEach(r => r.classList.remove('selected'));
-                row.classList.add('selected');
-
-                // Remember selected row
-                currentIndex = index;
-
-                fetch('/row_clicked', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        index:   currentIndex,
-                        maptype: currentMaptype   // <-- NEW: preserve toggle
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    const container1 = document.getElementById('fig1-content');
-                    container1.innerHTML = data.fig1_html;
-                    container1.querySelectorAll('script').forEach(oldScript => {
-                        const newScript = document.createElement('script');
-                        newScript.textContent = oldScript.textContent;
-                        oldScript.parentNode.replaceChild(newScript, oldScript);
-                    });
-
-                    const container2 = document.getElementById('fig2-content');
-                    container2.innerHTML = data.fig2_html;
-                    container2.querySelectorAll('script').forEach(oldScript => {
-                        const newScript = document.createElement('script');
-                        newScript.textContent = oldScript.textContent;
-                        oldScript.parentNode.replaceChild(newScript, oldScript);
-                    });
-
-                    const container3 = document.getElementById('fig3-content');
-                    container3.innerHTML = data.fig3_html;
-                    container3.querySelectorAll('script').forEach(oldScript => {
-                        const newScript = document.createElement('script');
-                        newScript.textContent = oldScript.textContent;
-                        oldScript.parentNode.replaceChild(newScript, oldScript);
-                    });
-                })
-                .catch(err => console.error('Fetch error:', err));
-            });
-        });
-    {% endraw %}
-    </script>
-
-    <script>
-    const loadedVersion = {{ version }};
-    setInterval(async () => {
-        const resp = await fetch("/check_update");
-        const data = await resp.json();
-        if (data.version > loadedVersion) {
-            location.reload();
-        }
-    }, 1000);
-    </script>
-
-    <script>
-        let remaining = {{ countdown_seconds }};
-        let updating  = false;
-
-        function updateCountdown() {
-            const el = document.getElementById("countdown-value");
-            if (updating) {
-                el.textContent = "Updating...";
-            } else if (remaining > 0) {
-                el.textContent = remaining.toFixed(0) + "s";
-                remaining -= 1;
-            } else {
-                el.textContent = "0s";
-            }
-        }
-
-        function refreshCountdown() {
-            fetch("/next_update")
-                .then(r => r.json())
-                .then(data => {
-                    updating = data.updating;
-                    if (!updating) {
-                        remaining = Math.max(0, data.next_update - data.server_time);
-                    }
-                });
-        }
-
-        updateCountdown();
-        setInterval(updateCountdown, 1000);
-        setInterval(refreshCountdown, 1000);   // Poll every 1s so "Updating..." appears promptly
-    </script>
-
-    <script>
-    function sendMapType(maptype) {
-        // Remember selected toggle
-        currentMaptype = maptype;
-        updateFig1Heading();
-
-        // Update button styling
-        document.querySelectorAll('.maptype-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.maptype === maptype);
-        });
-
-        fetch("/maptype_clicked", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                maptype: currentMaptype,
-                index:   currentIndex    // <-- NEW: preserve selected row
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            const container1 = document.getElementById('fig1-content');
-            container1.innerHTML = data.fig1_html;
-            container1.querySelectorAll('script').forEach(oldScript => {
-                const newScript = document.createElement('script');
-                newScript.textContent = oldScript.textContent;
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-            const container2 = document.getElementById('fig2-content');
-            container2.innerHTML = data.fig2_html;
-            container2.querySelectorAll('script').forEach(oldScript => {
-                const newScript = document.createElement('script');
-                newScript.textContent = oldScript.textContent;
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-        })
-        .catch(error => console.error("Error:", error));
-    }
-    </script>
-
-    <script>
-        const maptypeHeadings = {
-           daily: "Daily visits",
-            total: "Cumulative visits to date"
-        };
-        function updateFig1Heading() {
-            document.getElementById('fig1-heading').textContent = maptypeHeadings[currentMaptype];
-        }
-    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
 </body>
 </html>
