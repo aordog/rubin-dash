@@ -19,13 +19,13 @@ state = {
 }
 
 # Build the target list:
-ra_t_list  = [350.0, 340.0, 330.0]#, 330.0, 325.0]
-dec_t_list = [-7.0, -8.0, -7.5]#, -8.0, -7.0]
-r_ang_list = [1.5, 1.5, 1.5]#, 1.5, 1.5]
-name = ' '
+ra_t_list  = [350.0, 340.0, 330.0, 180.0]#, 330.0, 325.0]
+dec_t_list = [-7.0, -8.0, -7.5, -5.0]#, -8.0, -7.0]
+r_ang_list = [1.5, 1.5, 1.5, 1.5]#, 1.5, 1.5]
+name_list = ['Target A', 'Target B', 'Target C', 'Target D']
 
 target_set = []
-for ra_t, dec_t, r_ang in zip(ra_t_list, dec_t_list, r_ang_list):
+for ra_t, dec_t, r_ang, name in zip(ra_t_list, dec_t_list, r_ang_list, name_list):
     target_set.append(Target(ra_t, dec_t, r_ang, name))
 
 t_refresh = 30
