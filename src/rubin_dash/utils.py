@@ -67,9 +67,6 @@ def get_metadata_rsv(today: str,
     data['daily'][today]['dec'] = dec[idxs]
     data['daily'][today]['band'] = make_fake_bands(len(idxs))
     data['daily'][today]['rot'] = make_fake_rot(len(idxs))
-
-    ## This is obsolete with numbers read from 2D masks instead:
-    # data = count_visits(today, data)
     
     return data
 
@@ -83,17 +80,6 @@ def make_fake_rot(nvisits):
 
     return [random.uniform(0, 90) for _ in range(nvisits)]
 
-# This is obsolete with numbers read from 2D masks instead.
-def count_visits(today: str, data: dict):
-
-    for band in ['u','g','r','i','z','y']:
-        idx_band = np.where(np.array(data['daily'][today]['band']) == band)
-        if idx_band != None:
-            data['daily'][today][band+'visits'] = len(idx_band[0])
-        else:
-            data['daily'][today][band+'visits'] = 0
-
-    return data
 
 def count_target_visits(today: str,
                         ra_t: float, 
@@ -228,15 +214,6 @@ def make_table(target_set):
     table = table.reset_index() # moves "Target ID" into a normal column
 
     return table
-
-# This is obsolete with numbers read from 2D masks instead.
-def total_visits(target_set, band):
-
-    visits = []
-    for target in target_set:
-        visits.append(sum(d[band+"visits"] for d in target.data['daily'].values()))
-
-    return visits
 
 
 def time_series(target):
