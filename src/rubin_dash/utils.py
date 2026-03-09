@@ -193,24 +193,23 @@ def make_table(target_set):
     bands = ["u", "g", "r", "i", "z", "y"]
 
     visits_dict = {}
+    visits_dict['Name'] = []
     visits_dict['RA']  = []
     visits_dict['dec'] = []
-
+    
     for band in bands:
         visits_dict[band] = []
 
     for target in target_set:
+        visits_dict['Name'].append(target.name)
         visits_dict['RA'].append(target.ra_t)
         visits_dict['dec'].append(target.dec_t)
 
         for band in bands:
-            visits_dict[band].append(target.data['total'][band+'visits_t'])
-
-    #for band in bands:
-    #    visits_dict[band] = total_visits(target_set, band)
+            visits_dict[band].append(int(target.data['total'][band+'visits_t']))
 
     table = pd.DataFrame(visits_dict, index=id)
-    table.index.name = "Target ID"
+    table.index.name = "ID"
     table = table.reset_index() # moves "Target ID" into a normal column
 
     return table
