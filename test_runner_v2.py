@@ -26,9 +26,7 @@ name = ' '
 
 target_set = []
 for ra_t, dec_t, r_ang in zip(ra_t_list, dec_t_list, r_ang_list):
-    target = Target(ra_t, dec_t, r_ang, name)
-    target.add_mask_grid()
-    target_set.append(target)
+    target_set.append(Target(ra_t, dec_t, r_ang, name))
 
 t_refresh = 30
 
@@ -49,8 +47,6 @@ def data_loop():
 
         for target in target_set:
             target.get_metadata_rsv(date)
-            target.lsstcam_mask(date)
-            target.count_target_visits(date)
 
         target_plots = VisitsFigures(target_set[0]) # DEFAULTS TO FIRST TARGET (0)
         fig1_html = target_plots.visits_maps(date, 'daily') # DEFAULTS TO SHOWING DAILY VISITS
