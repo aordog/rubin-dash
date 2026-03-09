@@ -1,9 +1,4 @@
-body {
-    background: lavender;
-    color: darkblue;
-    font-family: Arial, sans-serif;
-    margin: 15px;
-}
+/* ---------- Header ---------- */
 h1 {
     font-size: 50px;
     position: fixed;
@@ -15,45 +10,47 @@ h1 {
     z-index: 20;
     margin: 0;
     padding: 20px 0;
-    display: flex;              /* NEW: align logo + text side by side */
-    align-items: center;        /* NEW: vertically centre them */
-    justify-content: center;    /* NEW: horizontally centre them */
-    gap: 30px;                  /* NEW: space between logo and text */
-
+    display: flex;              /* align logo + text side by side */
+    align-items: center;        /* vertically centre them */
+    justify-content: center;    /* horizontally centre them */
+    gap: 30px;                  /* space between logo and text */
 }
-
 .header-logo {
     height: 100px;               /* Scale logo to fit the header */
-    width: auto;                /* Maintain aspect ratio */
+    width: auto;                 /* Maintain aspect ratio */
 }
 
+/* ---------- General formatting ---------- */
+body {
+    background: lavender;
+    color: darkblue;
+    font-family: Arial, sans-serif;
+    margin: 15px;
+}
 h2 {
     font-size: 30px;
     padding-left: 10px;
     padding-top: 0px;
 }
-
 .main-layout {
     display: flex;
     gap: 5px;
     align-items: flex-start;
-    margin-top: 140px;          /* Push everything below the fixed h1 */
+    margin-top: 140px;          
 }
-
 .left-column {
     position: fixed;
-    top: 140px;                 /* Sits right below the h1 */
+    top: 140px;                 
     left: 20px;
     width: 540px;
-    max-height: calc(100vh - 90px);  /* Fill remaining viewport height */
+    max-height: calc(100vh - 90px);  
     overflow-y: auto;
 }
 .right-column {
     flex: 1;
     min-width: 0;
-    margin-left: 545px;       /* 350px column width + 5px gap */
+    margin-left: 545px;       
 }
-
 .figure-container {
     padding: 10px;
     margin: 5px;
@@ -62,14 +59,27 @@ h2 {
     background-color: white;
 }
 
+/* ---------- Summary table ---------- */
 .data-table {
     border-collapse: collapse;
     margin: 5px auto;
     font-size: 14px;
     border: 1px solid black;
-    table-layout: fixed;    /* Column widths no longer depend on content */
-    width: 500px;           /* Total table width — adjust to fit your layout */
+    table-layout: fixed;           
 }
+/* ---------- Column widths ---------- */
+.data-table th:nth-child(1),
+.data-table td:nth-child(1) { width: 20px; }
+
+.data-table th:nth-child(2),
+.data-table td:nth-child(2) { width: 80px; }
+
+.data-table th:nth-child(n+3):nth-child(-n+4),
+.data-table td:nth-child(n+3):nth-child(-n+4) { width: 30px; }
+
+.data-table th:nth-child(n+5):nth-child(-n+10),
+.data-table td:nth-child(n+5):nth-child(-n+10) { width: 20px; }
+
 .data-table th {
     background-color: lavender;
     color: darkblue;
@@ -104,6 +114,7 @@ h2 {
     background: white;
 }
 
+/* ---------- Countdown to next refresh ---------- */
 #countdown-display {
     text-align: center;
     font-size: 18px;
@@ -121,7 +132,6 @@ h2 {
     margin-top: 10px;
     margin-bottom: 10px;
 }
-
 .maptype-btn {
     padding: 10px 20px;
     font-size: 18px;
@@ -133,11 +143,9 @@ h2 {
     cursor: pointer;
     margin: 0 4px;
 }
-
 .maptype-btn:hover {
     background-color: lightcyan;
 }
-
 .maptype-btn.active {
     background-color: darkblue;
     color: white;
