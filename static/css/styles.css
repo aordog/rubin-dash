@@ -65,9 +65,21 @@ h2 {
     margin: 5px auto;
     font-size: 14px;
     border: 1px solid black;
-    table-layout: fixed;    
-    width: 500px;           
+    table-layout: fixed;           
 }
+/* ---------- Column widths ---------- */
+.data-table th:nth-child(1),
+.data-table td:nth-child(1) { width: 20px; }
+
+.data-table th:nth-child(2),
+.data-table td:nth-child(2) { width: 80px; }
+
+.data-table th:nth-child(n+3):nth-child(-n+4),
+.data-table td:nth-child(n+3):nth-child(-n+4) { width: 30px; }
+
+.data-table th:nth-child(n+5):nth-child(-n+10),
+.data-table td:nth-child(n+5):nth-child(-n+10) { width: 20px; }
+
 .data-table th {
     background-color: lavender;
     color: darkblue;
