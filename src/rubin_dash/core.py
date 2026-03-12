@@ -37,7 +37,7 @@ class Target:
         self.ra_grid, self.dec_grid = utils.add_mask_grid(ra_t, dec_t, r)
         self.data: dict | None = None
 
-    def get_metadata_rsv(self, date) -> dict:
+    def get_metadata_rsv(self, date, camera, visits) -> dict:
 
         """Read in metadata from the Rubin Schedule Viewer.
 
@@ -56,9 +56,9 @@ class Target:
             The date (in ISO format) for which to read in the metadata.
         """
         
-        self.data = utils.get_metadata_rsv(date, self.ra_t, self.dec_t,
+        self.data = utils.get_metadata_rsv(date, visits, self.ra_t, self.dec_t,
                                            self.r, self.data)
-        self.data = utils.lsstcam_mask(date, self.ra_grid, self.dec_grid, 
+        self.data = utils.lsstcam_mask(date, camera, self.ra_grid, self.dec_grid, 
                                        self.data)
         self.data = utils.count_target_visits(date, self.ra_t, self.dec_t,
                                               self.ra_grid, self.dec_grid, 

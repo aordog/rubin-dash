@@ -22,7 +22,8 @@ from astropy import coordinates as coord
 import ephem
 
 
-def get_metadata_rsv(today: str, 
+def get_metadata_rsv(today: str,
+                     visits, 
                      ra_t: float, 
                      dec_t: float, 
                      r: float,
@@ -51,7 +52,7 @@ def get_metadata_rsv(today: str,
     """
     
     # Get the data
-    visits = rsv_service(today)
+    #visits = rsv_service(today)
     
     ra  = np.array(visits["s_ra"])
     dec = np.array(visits["s_dec"])
@@ -147,11 +148,12 @@ def get_camera(os_env = '/home/aordog/rubin_sim_data'):
     return camera
 
 def lsstcam_mask(today: str, 
+                camera,
                 ra_grid: np.ndarray, 
                 dec_grid: np.ndarray,
                 data: dict):
 
-    camera = get_camera()
+    #camera = get_camera()
 
     bands = ['u','g','r','i','z','y']
     for band in bands:
@@ -364,7 +366,7 @@ def make_long_forecast_plot(date, RA_t, dec_t):
 
     loc = EarthLocation.of_site('LSST')
     start_date = Time(date).iso
-    t  =  10.0 # days
+    t  =  30.0 # days
     dt =  1.0 # hours
     dmjd_arr = np.arange(0, t+dt/24., dt/24.)
     t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr

@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, render_template
 import webbrowser
 from rubin_dash.core import Target, VisitsFigures, SummaryTable
+from rubin_dash.utils import get_camera, rsv_service
 import threading
 import time
 from datetime import datetime, timedelta
@@ -19,14 +20,20 @@ state = {
 }
 
 # Build the target list:
-ra_t_list  = [350.0, 340.0, 330.0, 180.0]#, 330.0, 325.0]
-dec_t_list = [-7.0, -8.0, -7.5, -5.0]#, -8.0, -7.0]
-r_ang_list = [1.5, 1.5, 1.5, 1.5]#, 1.5, 1.5]
-name_list = ['Target A', 'Target B', 'Target C', 'Target D']
+ra_t_list  = [350.0, 340.0, 330.0, 180.0, 330.0, 325.0]
+dec_t_list = [-7.0, -8.0, -7.5, -5.0, -8.0, -7.0]
+r_ang_list = [0.5, 1.5, 5.0, 1.5, 1.5, 1.5]
+name_list = ['Target A', 'Target B', 'Target C', 'Target D', 'Target E', 'Target F']
 
 target_set = []
 for ra_t, dec_t, r_ang, name in zip(ra_t_list, dec_t_list, r_ang_list, name_list):
     target_set.append(Target(ra_t, dec_t, r_ang, name))
+
+
+# Get the camera information
+print('============')
+camera = get_camera()
+print('============')
 
 t_refresh = 30
 
@@ -45,8 +52,10 @@ def data_loop():
         with state_lock:
             state["updating"] = True
 
+        visits = rsv_service(date)
+
         for target in target_set:
-            target.get_metadata_rsv(date)
+            target.get_metadata_rsv(date, camera, visits)
 
         target_plots = VisitsFigures(target_set[0]) # DEFAULTS TO FIRST TARGET (0)
         fig1_html = target_plots.visits_maps(date, 'daily') # DEFAULTS TO SHOWING DAILY VISITS
