@@ -112,6 +112,14 @@ h2 {
     top: 0;
     z-index: 100;
     background: white;
+    max-height: 400px;        /* adjust to whatever you want */
+    overflow-y: auto;         /* scrollbar only when needed */
+}
+.data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: lavender;  /* re-state so it doesn't go transparent */
 }
 
 /* ---------- Countdown to next refresh ---------- */

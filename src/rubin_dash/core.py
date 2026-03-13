@@ -7,6 +7,7 @@ core.py
 
 import rubin_dash.utils as utils
 import pandas as pd
+import numpy as np
 
 
 class Target:
@@ -27,14 +28,16 @@ class Target:
         The methods for the Target class serve to populate this dictionary.
     """
 
-    def __init__(self, ra_t:float, dec_t:float, r:float, name:str, 
-                 description: str = "Target Specifics"):
+    def __init__(self, ra_gr:float, dec_gr:float, name_gr:str,
+                 ra_mem:np.ndarray, dec_mem:np.ndarray, 
+                 description: str = "Target group specifics"):
         self.description = description
-        self.ra_t  = ra_t
-        self.dec_t = dec_t
-        self.r = r
-        self.name = name
-        self.ra_grid, self.dec_grid = utils.add_mask_grid(ra_t, dec_t, r)
+        self.ra_gr  = ra_gr
+        self.dec_gr = dec_gr
+        self.name_gr = name_gr
+        self.ra_mem  = ra_mem
+        self.dec_mem = dec_mem
+        self.ra_grid, self.dec_grid = utils.add_mask_grid(ra_gr, dec_gr)
         self.data: dict | None = None
 
     def get_metadata_rsv(self, date, camera, visits) -> dict:
@@ -56,11 +59,11 @@ class Target:
             The date (in ISO format) for which to read in the metadata.
         """
         
-        self.data = utils.get_metadata_rsv(date, visits, self.ra_t, self.dec_t,
-                                           self.r, self.data)
-        self.data = utils.lsstcam_mask(date, camera, self.ra_grid, self.dec_grid, 
-                                       self.data)
-        self.data = utils.count_target_visits(date, self.ra_t, self.dec_t,
+        self.data = utils.get_metadata_rsv(date, visits, 
+                                           self.ra_gr, self.dec_gr, self.data)
+        self.data = utils.lsstcam_mask(date, camera, 
+                                       self.ra_grid, self.dec_grid, self.data)
+        self.data = utils.count_target_visits(date, self.ra_mem, self.dec_mem,
                                               self.ra_grid, self.dec_grid, 
                                               self.data)
         
@@ -133,12 +136,14 @@ class VisitsFigures(BasePlot):
 
         return utils.visits_maps(self.target, date, maptype)
     
-    def visits_plots(self, maptype):
+    def visits_plots(self, member, maptype):
         """Make the plot of visits versus time for selected target"""
 
-        return utils.visits_plots(self.target, maptype)
+        return utils.visits_plots(self.target, member, maptype)
     
-    def make_long_forecast_plot(self, date):
+    def make_long_forecast_plot(self, member, date):
         """Make the longterm forecast plot"""
 
-        return utils.make_long_forecast_plot(date, self.target.ra_t, self.target.dec_t)
+        return utils.make_long_forecast_plot(date, 
+                                             self.target.ra_mem[member], 
+                                             self.target.dec_mem[member])

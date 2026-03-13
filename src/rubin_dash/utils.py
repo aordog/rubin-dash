@@ -20,13 +20,56 @@ from astropy.coordinates import EarthLocation
 from astropy.coordinates import SkyCoord
 from astropy import coordinates as coord
 import ephem
+import healpy as hp
 
+def read_csv_file(file_in, declim):
+
+    with open(file_in, 'r') as f:
+        lines = f.readlines()
+
+    header_idx = next(i for i, line in enumerate(lines) if line.startswith('No.'))
+
+    df = pd.read_csv(file_in,
+                    sep='|',
+                    skiprows=header_idx,
+                    header=0,
+                    skipinitialspace=True)
+
+    df.columns = df.columns.str.strip()
+    df['Object Name'] = df['Object Name'].str.strip()
+
+    return remove_high_dec(df['RA'].values.astype(float), 
+                           df['DEC'].values.astype(float), declim)
+
+def remove_high_dec(ra_in, dec_in, dec_lim):
+    return ra_in[dec_in<dec_lim], dec_in[dec_in<dec_lim]
+
+
+def group_targets(ra_in, dec_in, nside):
+
+    pixel_ids  = hp.ang2pix(nside, ra_in, dec_in, lonlat=True)
+    idx_filled = np.unique(pixel_ids)
+
+    name_group = []
+    ra_group = []
+    dec_group = []
+    ra_members = []
+    dec_members = []
+
+    for idx in idx_filled:
+        name_group.append('nside'+str(nside)+'_'+str(idx))
+        coords_group = hp.pix2ang(nside, idx, lonlat=True)
+        ra_group.append(coords_group[0])
+        dec_group.append(coords_group[1])
+        ra_members.append(ra_in[pixel_ids == idx])
+        dec_members.append(dec_in[pixel_ids == idx])
+
+    return ra_group, dec_group, name_group, ra_members, dec_members
 
 def get_metadata_rsv(today: str,
                      visits, 
                      ra_t: float, 
-                     dec_t: float, 
-                     r: float,
+                     dec_t: float,
                      data: dict):
     """Read in meta data from the Rubin Schedule Viewer using input parameters.
 
@@ -54,6 +97,7 @@ def get_metadata_rsv(today: str,
     # Get the data
     #visits = rsv_service(today)
     
+    r = 3.0
     ra  = np.array(visits["s_ra"])
     dec = np.array(visits["s_dec"])
     status = np.array(visits["execution_status"])
@@ -83,19 +127,23 @@ def make_fake_rot(nvisits):
 
 
 def count_target_visits(today: str,
-                        ra_t: float, 
-                        dec_t: float,
+                        ra_mem: float, 
+                        dec_mem: float,
                         ra_grid: np.ndarray, 
                         dec_grid: np.ndarray,
                         data: dict):
 
-    dist = np.sqrt((ra_t-ra_grid)**2 + ((dec_t-dec_grid)*np.cos(dec_t*np.pi/180.))**2)
-
-    idx = dist.argmin()
-
     for band in ['u','g','r','i','z','y']:
-        data['daily'][today][band+'visits_t'] = data['daily'][today][band+'mask'][idx]
-        data['total'][band+'visits_t'] = data['total'][band+'mask'][idx]
+
+        data['daily'][today][band+'visits'] = []
+        data['total'][band+'visits'] = []
+
+        for i in range(0,len(ra_mem)):
+            dist = np.sqrt((ra_mem[i]-ra_grid)**2 + ((dec_mem[i]-dec_grid)*np.cos(dec_mem[i]*np.pi/180.))**2)
+            idx = dist.argmin()
+
+            data['daily'][today][band+'visits'].append(data['daily'][today][band+'mask'][idx])
+            data['total'][band+'visits'].append(data['total'][band+'mask'][idx])
 
     return data
 
@@ -120,9 +168,10 @@ def rsv_service(date: str) -> pd.DataFrame:
     return pd.DataFrame(response.json())
 
 
-def add_mask_grid(pointing_ra, pointing_dec, radius):
+def add_mask_grid(pointing_ra, pointing_dec):
 
-    samp=0.01
+    samp=0.0166667
+    radius = 2.0 # should work well for nside=16 grouping
 
     ra_grid = np.arange(pointing_ra - radius*np.cos(np.radians(pointing_dec)), 
                    pointing_ra + radius, 
@@ -190,34 +239,67 @@ def target_visits_idxs(ra_t: float,
 
 def make_table(target_set):
 
-    id = [f"{i:02d}" for i in range(1, len(target_set)+1)]
-
     bands = ["u", "g", "r", "i", "z", "y"]
 
     visits_dict = {}
     visits_dict['Name'] = []
     visits_dict['RA']  = []
     visits_dict['dec'] = []
+    visits_dict['gr_num']  = []
+    visits_dict['mem_num'] = []
+    row_ids = []
     
     for band in bands:
         visits_dict[band] = []
 
-    for target in target_set:
-        visits_dict['Name'].append(target.name)
-        visits_dict['RA'].append(target.ra_t)
-        visits_dict['dec'].append(target.dec_t)
+    row=0
+    #for target in target_set:
+    for j in range(0,len(target_set)):
+        #visits_dict['Name'].append(target.name)
+        #visits_dict['RA'].append(target.ra_t)
+        #visits_dict['dec'].append(target.dec_t)
+        for i in range(0,len(target_set[j].ra_mem)):
+            visits_dict['Name'].append(target_set[j].name_gr)
+            visits_dict['RA'].append(target_set[j].ra_mem[i])
+            visits_dict['dec'].append(target_set[j].dec_mem[i])
+            visits_dict['gr_num'].append(j)
+            visits_dict['mem_num'].append(i)
+            row_ids.append(f"{row:02d}")
+            row=row+1
 
-        for band in bands:
-            visits_dict[band].append(int(target.data['total'][band+'visits_t']))
+            for band in bands:
+                visits_dict[band].append(int(target_set[j].data['total'][band+'visits'][i]))
 
-    table = pd.DataFrame(visits_dict, index=id)
+    table = pd.DataFrame(visits_dict, index=row_ids)
     table.index.name = "ID"
-    table = table.reset_index() # moves "Target ID" into a normal column
 
     return table
 
+def table_to_html(df):
+    html = '<table class="data-table">\n<thead>\n<tr>'
 
-def time_series(target):
+    # Index header first, then column headers
+    html += f"<th>{df.index.name}</th>"
+    for col in df.columns:
+        html += f"<th>{col}</th>"
+    html += "</tr>\n</thead>\n<tbody>\n"
+
+    # Data rows
+    for idx, row in df.iterrows():
+        html += (
+            f'<tr data-id="{idx}"'
+            f' data-gn="{row["gr_num"]}"'
+            f' data-mn="{row["mem_num"]}">'
+        )
+        html += f"<td>{idx}</td>"          # ID cell
+        for col in df.columns:
+            html += f"<td>{row[col]}</td>"
+        html += "</tr>\n"
+
+    html += "</tbody>\n</table>"
+    return html
+
+def time_series(target, member):
 
     t = []
     Nvisits_daily = {}
@@ -236,7 +318,7 @@ def time_series(target):
         for band in bands:
 
             # Today's visits:
-            Nvisits_today = target.data['daily'][date][band+'visits_t']
+            Nvisits_today = target.data['daily'][date][band+'visits'][member]
             Nvisits_daily[band].append(Nvisits_today)
 
             # Total visits:
@@ -290,9 +372,9 @@ def visits_maps(target, date, maptype):
                             row=row, col=col
             )
                 
-            fig.update_xaxes(range=[target.ra_t+target.r, target.ra_t-target.r], constrain='domain', 
+            fig.update_xaxes(range=[target.ra_gr+2.0, target.ra_gr-2.0], constrain='domain', 
                             row=row, col=col)
-            fig.update_yaxes(range=[target.dec_t-target.r, target.dec_t+target.r], constrain='domain', 
+            fig.update_yaxes(range=[target.dec_gr-2.0, target.dec_gr+2.0], constrain='domain', 
                             scaleanchor=f"x{col + (row-1)*3}", 
                             scaleratio=1, row=row, col=col)
         
@@ -315,7 +397,7 @@ def visits_maps(target, date, maptype):
     
     return fig_html
 
-def visits_plots(target, maptype):
+def visits_plots(target, member, maptype):
  
     fig = make_subplots(
         rows=1, cols=1,
@@ -326,7 +408,7 @@ def visits_plots(target, maptype):
     colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
     msizes = [18, 16, 14, 12, 10, 8]
 
-    t, Nvisits_daily, Nvisits_tot = time_series(target)
+    t, Nvisits_daily, Nvisits_tot = time_series(target, member)
 
     # Loop through and add traces
     for color, name, s in zip(colors, filter_names, msizes):

@@ -33,13 +33,18 @@ rows.forEach((row, index) => {
         row.classList.add('selected');
         currentIndex = index;
 
+        // Pull metadata from the data- attributes
+        const rowMeta = {
+            index:   currentIndex,
+            maptype: currentMaptype,
+            gn:    row.dataset.gn,
+            mn:    row.dataset.mn
+        };
+
         fetch('/row_clicked', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                index:   currentIndex,
-                maptype: currentMaptype
-            })
+            body: JSON.stringify(rowMeta)
         })
         .then(res => res.json())
         .then(data => {
@@ -65,7 +70,7 @@ setInterval(async () => {
     if (data.version > loadedVersion) {
         location.reload();
     }
-}, 1000);
+}, 2000);
 
 
 // ---- Countdown timer ----
