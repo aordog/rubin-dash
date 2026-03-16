@@ -127,18 +127,19 @@ def row_clicked():
 
 @app.route("/maptype_clicked", methods=["POST"])
 def maptype_clicked():
-
     data = request.get_json()
-    maptype = data.get("maptype")
+    maptype = data["maptype"]
     index = data.get("index", 0)
-    print(f"Map type {maptype} was clicked (table row={index})!")
+    gn = data.get("gn",0)
+    mn = data.get("mn",0)
+    print(f"Map type {maptype} was clicked (table row={index}, group:{gn}, member:{mn})!")
 
     with state_lock:
         date = state["date"]
 
-    target_plots = VisitsFigures(target_set[index])
+    target_plots = VisitsFigures(target_set[int(gn)])
     fig1_html_new = target_plots.visits_maps(date, maptype)
-    fig2_html_new = target_plots.visits_plots(maptype)
+    fig2_html_new = target_plots.visits_plots(int(mn), maptype)
 
     return jsonify({"status": "ok", "fig1_html": fig1_html_new, "fig2_html": fig2_html_new})
 

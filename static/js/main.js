@@ -11,6 +11,8 @@ const SERVER_DATA = {
 // ---- Client-side state ----
 let currentIndex   = 0;
 let currentMaptype = 'daily';
+let currentGn      = '0';  
+let currentMn      = '0';  
 
 
 // ---- Helper: execute <script> tags inside injected HTML ----
@@ -32,13 +34,16 @@ rows.forEach((row, index) => {
         rows.forEach(r => r.classList.remove('selected'));
         row.classList.add('selected');
         currentIndex = index;
+        currentGn = row.dataset.gn;
+        currentMn = row.dataset.mn;
+
 
         // Pull metadata from the data- attributes
         const rowMeta = {
             index:   currentIndex,
             maptype: currentMaptype,
-            gn:    row.dataset.gn,
-            mn:    row.dataset.mn
+            gn:      currentGn,
+            mn:      currentMn
         };
 
         fetch('/row_clicked', {
@@ -129,7 +134,10 @@ function sendMapType(maptype) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             maptype: currentMaptype,
-            index:   currentIndex
+            index:   currentIndex,
+            gn:      currentGn,   
+            mn:      currentMn    
+
         })
     })
     .then(res => res.json())
