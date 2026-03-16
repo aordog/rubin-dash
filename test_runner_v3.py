@@ -60,7 +60,7 @@ def data_loop():
             target.get_metadata_rsv(date, camera, visits)
 
         target_plots = VisitsFigures(target_set[0]) # DEFAULTS TO FIRST TARGET GROUP (0)
-        fig1_html = target_plots.visits_maps(date, 'daily') # DEFAULTS TO SHOWING DAILY VISITS
+        fig1_html = target_plots.visits_maps(0, date, 'daily') # DEFAULTS TO SHOWING DAILY VISITS
         fig2_html = target_plots.visits_plots(0, 'daily') # DEFAULTS TO SHOWING DAILY VISITS
         fig3_html = target_plots.make_long_forecast_plot(0, date)
         table = SummaryTable(target_set).make_table()
@@ -118,7 +118,7 @@ def row_clicked():
         date = state["date"]
 
     target_plots = VisitsFigures(target_set[int(gn)])
-    fig1_html_new = target_plots.visits_maps(date, maptype)
+    fig1_html_new = target_plots.visits_maps(int(mn), date, maptype)
     fig2_html_new = target_plots.visits_plots(int(mn), maptype)
     fig3_html_new = target_plots.make_long_forecast_plot(int(mn), date)
 
@@ -138,7 +138,7 @@ def maptype_clicked():
         date = state["date"]
 
     target_plots = VisitsFigures(target_set[int(gn)])
-    fig1_html_new = target_plots.visits_maps(date, maptype)
+    fig1_html_new = target_plots.visits_maps(int(mn), date, maptype)
     fig2_html_new = target_plots.visits_plots(int(mn), maptype)
 
     return jsonify({"status": "ok", "fig1_html": fig1_html_new, "fig2_html": fig2_html_new})
