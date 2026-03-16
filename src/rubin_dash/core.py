@@ -131,10 +131,10 @@ class VisitsFigures(BasePlot):
         super().__init__(description="2D visits map")
         self.target = target
 
-    def visits_maps(self, date, maptype):
+    def visits_maps(self, idx_mem, date, maptype):
         """Make the 2D map of visits to date for selected target"""
 
-        return utils.visits_maps(self.target, date, maptype)
+        return utils.visits_maps(self.target, idx_mem, date, maptype)
     
     def visits_plots(self, member, maptype):
         """Make the plot of visits versus time for selected target"""

@@ -1,6 +1,6 @@
 /* ---------- Header ---------- */
 h1 {
-    font-size: 50px;
+    font-size: 40px;
     position: fixed;
     top: 0;
     left: 0;
@@ -9,14 +9,14 @@ h1 {
     background-color: lavender;
     z-index: 20;
     margin: 0;
-    padding: 20px 0;
+    padding: 10px 0;
     display: flex;              /* align logo + text side by side */
     align-items: center;        /* vertically centre them */
     justify-content: center;    /* horizontally centre them */
-    gap: 30px;                  /* space between logo and text */
+    gap: 24px;                  /* space between logo and text */
 }
 .header-logo {
-    height: 100px;               /* Scale logo to fit the header */
+    height: 80px;               /* Scale logo to fit the header */
     width: auto;                 /* Maintain aspect ratio */
 }
 
@@ -28,7 +28,7 @@ body {
     margin: 15px;
 }
 h2 {
-    font-size: 30px;
+    font-size: 24px;
     padding-left: 10px;
     padding-top: 0px;
 }
@@ -36,26 +36,26 @@ h2 {
     display: flex;
     gap: 5px;
     align-items: flex-start;
-    margin-top: 140px;          
+    margin-top: 100px;          
 }
 .left-column {
     position: fixed;
-    top: 140px;                 
+    top: 100px;                 
     left: 20px;
-    width: 540px;
+    width: 520px;
     max-height: calc(100vh - 90px);  
     overflow-y: auto;
 }
 .right-column {
     flex: 1;
     min-width: 0;
-    margin-left: 545px;       
+    margin-left: 525px;       
 }
 .figure-container {
     padding: 10px;
     margin: 5px;
     border: 1px solid black;
-    border-radius: 10px;
+    border-radius: 5px;
     background-color: white;
 }
 
@@ -63,7 +63,7 @@ h2 {
 .data-table {
     border-collapse: collapse;
     margin: 5px auto;
-    font-size: 14px;
+    font-size: 10px;
     border: 1px solid black;
     table-layout: fixed;           
 }
@@ -83,12 +83,12 @@ h2 {
 .data-table th {
     background-color: lavender;
     color: darkblue;
-    padding: 12px 12px;
+    padding: 10px 10px;
     text-align: center;
     border: 1px solid black;
 }
 .data-table td {
-    padding: 12px 12px;
+    padding: 10px 10px;
     border: 1px solid black;
     text-align: center;
 }
@@ -112,7 +112,7 @@ h2 {
     top: 0;
     z-index: 100;
     background: white;
-    max-height: 400px;        /* adjust to whatever you want */
+    max-height: 380px;        /* adjust to whatever you want */
     overflow-y: auto;         /* scrollbar only when needed */
 }
 .data-table thead th {
@@ -125,7 +125,7 @@ h2 {
 /* ---------- Countdown to next refresh ---------- */
 #countdown-display {
     text-align: center;
-    font-size: 18px;
+    font-size: 14px;
     color: darkblue;
     padding: 8px 0;
 }
@@ -142,7 +142,7 @@ h2 {
 }
 .maptype-btn {
     padding: 10px 20px;
-    font-size: 18px;
+    font-size: 14px;
     font-weight: bold;
     border: 2px solid darkblue;
     border-radius: 6px;

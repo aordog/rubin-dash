@@ -332,10 +332,10 @@ def time_series(target, member):
 
     return t, Nvisits_daily, Nvisits_tot
 
-def visits_maps(target, date, maptype):
+def visits_maps(target, idx_mem, date, maptype):
 
     filter_names = [['u', 'g', 'r'], ['i', 'z', 'y']]
-    titles = ['Filter u','Filter g','Filter r','Filter i','Filter z','Filter y',]
+    titles = ['u','g','r','i','z','y',]
 
     fig = make_subplots(
         rows=2, cols=3,
@@ -366,11 +366,39 @@ def visits_maps(target, date, maptype):
                                                    outlinecolor='black', 
                                                    title=dict(text='Number of visits',
                                                                 side='right',
-                                                                font=dict(size=14))
+                                                                font=dict(size=12))
                                             )
                             ), 
                             row=row, col=col
             )
+            fig.add_trace(
+            go.Scatter(
+                x=target.ra_mem,
+                y=target.dec_mem,
+                showlegend=False,
+                mode='markers',
+                marker=dict(
+                    size=3,
+                    color='black',
+                    symbol='circle'
+                    )
+                ),
+                row=row, col=col
+            )
+            fig.add_trace(
+            go.Scatter(
+                x=[target.ra_mem[idx_mem]],
+                y=[target.dec_mem[idx_mem]],
+                mode='markers',
+                showlegend=False,
+                marker=dict(
+                    size=5,
+                    color='lightgreen',
+                    symbol='circle'
+                    )
+                ),
+                row=row, col=col
+            )    
                 
             fig.update_xaxes(range=[target.ra_gr+2.0, target.ra_gr-2.0], constrain='domain', 
                             row=row, col=col)
@@ -378,7 +406,7 @@ def visits_maps(target, date, maptype):
                             scaleanchor=f"x{col + (row-1)*3}", 
                             scaleratio=1, row=row, col=col)
         
-            fig.for_each_annotation(lambda a: a.update(font_size=24, y=a.y+0.001))
+            fig.for_each_annotation(lambda a: a.update(font_size=16, y=a.y+0.001))
 
     fig.update_xaxes(
         showline=True, linewidth=1, linecolor='black', mirror=True,
@@ -391,7 +419,7 @@ def visits_maps(target, date, maptype):
 
     fig.update_xaxes(title_text="RA (deg.)", row=2)
     fig.update_yaxes(title_text="Dec (deg.)", col=1)
-    fig.update_layout(height=700, width=980, showlegend=True)
+    fig.update_layout(height=500, width=700, showlegend=True)
 
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False, div_id='figure1')
     
@@ -436,7 +464,7 @@ def visits_plots(target, member, maptype):
 
     fig.update_xaxes(title_text="Date", row=1)
     fig.update_yaxes(title_text="Number of visits", col=1)
-    fig.update_layout(height=500, width=980, showlegend=True)
+    fig.update_layout(height=400, width=700, showlegend=True)
 
     # For the second figure, we don't need to include plotly.js again
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
@@ -527,7 +555,7 @@ def make_long_forecast_plot(date, RA_t, dec_t):
 
     fig.update_xaxes(title_text="MJD", row=1)
     fig.update_yaxes(title_text="Elevation (deg.)", row=1)
-    fig.update_layout(height=300, width=980, showlegend=True)
+    fig.update_layout(height=300, width=700, showlegend=True)
     fig.update_yaxes(range=[-90, 90],row=1, col=1) 
     fig.update_xaxes(range=[t_utc.mjd[0], t_utc.mjd[-1]], row=1, col=1) 
 
