@@ -10,6 +10,16 @@ import pandas as pd
 import numpy as np
 
 
+class CoordListGrouped:
+    '''A class for grouped input target list
+    '''
+
+    def __init__(self, ra_list,dec_list,nside,
+                 description: str = "Grouped list of coordinates"):
+        self.description = description
+        self.groups = utils.group_targets(ra_list,dec_list,nside)
+
+
 class Target:
     """A class for information pertaining to a single target.
 
@@ -39,8 +49,9 @@ class Target:
         self.dec_mem = dec_mem
         self.ra_grid, self.dec_grid = utils.add_mask_grid(ra_gr, dec_gr)
         self.data: dict | None = None
+        self.data = utils.initialize_data_dict(self.data)
 
-    def get_metadata_rsv(self, date, camera, visits) -> dict:
+    def get_metadata_rsv(self, visits) -> dict:
 
         """Read in metadata from the Rubin Schedule Viewer.
 
@@ -59,10 +70,14 @@ class Target:
             The date (in ISO format) for which to read in the metadata.
         """
         
-        self.data = utils.get_metadata_rsv(date, visits, 
-                                           self.ra_gr, self.dec_gr, self.data)
-        self.data = utils.lsstcam_mask(date, camera, 
+        return utils.get_metadata_rsv(visits, self.ra_gr, self.dec_gr)
+    
+    def lsstcam_mask(self, visits_use, camera) -> dict:
+
+        self.data = utils.lsstcam_mask(visits_use, camera,
                                        self.ra_grid, self.dec_grid, self.data)
+        
+    def count_target_visits(self, date) -> dict:
         self.data = utils.count_target_visits(date, self.ra_mem, self.dec_mem,
                                               self.ra_grid, self.dec_grid, 
                                               self.data)
@@ -96,7 +111,6 @@ class Target:
         pass
 
 
-
 class SummaryTable:
     """A class for assembling the targets into a table.
 
@@ -114,7 +128,6 @@ class SummaryTable:
     def make_table(self) -> pd.DataFrame:
 
         return utils.make_table(self.target_set)
-
 
 
 class BasePlot:

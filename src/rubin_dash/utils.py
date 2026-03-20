@@ -22,6 +22,10 @@ from astropy import coordinates as coord
 import ephem
 import healpy as hp
 
+#####################
+# Data preparation
+#####################
+
 def read_csv_file(file_in, declim):
 
     with open(file_in, 'r') as f:
@@ -41,36 +45,79 @@ def read_csv_file(file_in, declim):
     return remove_high_dec(df['RA'].values.astype(float), 
                            df['DEC'].values.astype(float), declim)
 
+def make_fake_src_list(nside, declim):
+
+    idx_list = np.arange(0,hp.nside2npix(nside))
+
+    ra, dec = hp.pix2ang(nside, idx_list, lonlat=True)
+
+    return remove_high_dec(ra.astype(float), 
+                           dec.astype(float), declim)
+
 def remove_high_dec(ra_in, dec_in, dec_lim):
     return ra_in[dec_in<dec_lim], dec_in[dec_in<dec_lim]
 
+def group_targets(ra_list, dec_list, nside):
 
-def group_targets(ra_in, dec_in, nside):
-
-    pixel_ids  = hp.ang2pix(nside, ra_in, dec_in, lonlat=True)
+    pixel_ids = hp.ang2pix(nside, ra_list, dec_list, lonlat=True)
     idx_filled = np.unique(pixel_ids)
 
-    name_group = []
-    ra_group = []
-    dec_group = []
-    ra_members = []
-    dec_members = []
+    groups = {'name_gr':[],'ra_gr':[],'dec_gr':[],'ra_mem':[],'dec_mem':[]}
 
     for idx in idx_filled:
-        name_group.append('nside'+str(nside)+'_'+str(idx))
+        groups['name_gr'].append('nside'+str(nside)+'_'+str(idx))
         coords_group = hp.pix2ang(nside, idx, lonlat=True)
-        ra_group.append(coords_group[0])
-        dec_group.append(coords_group[1])
-        ra_members.append(ra_in[pixel_ids == idx])
-        dec_members.append(dec_in[pixel_ids == idx])
+        groups['ra_gr'].append(coords_group[0])
+        groups['dec_gr'].append(coords_group[1])
+        groups['ra_mem'].append(ra_list[pixel_ids == idx])
+        groups['dec_mem'].append(dec_list[pixel_ids == idx])
 
-    return ra_group, dec_group, name_group, ra_members, dec_members
+    return groups
 
-def get_metadata_rsv(today: str,
-                     visits, 
+#####################
+# Rubin services
+#####################
+
+def rsv_service(date: str) -> pd.DataFrame:
+
+    # Define search parameters from inputs
+    params = {"time": "24", "start": date}
+    
+    # Define the ObsLocTAP URL of the service, which runs at the US Data Facility at SLAC:
+    obsloctap_url = "https://usdf-rsp.slac.stanford.edu/obsloctap"
+
+    # Define the schedule URL and connect to it using requests package:
+    schedule_url = obsloctap_url + "/schedule"
+    response = requests.get(schedule_url, params=params)
+
+    # Assert that the service is alive. - implement as test going forward
+    assert response.status_code == 200, f"request failed with status {response.status_code}"
+    print(f"Rubin Schedule Forecast  at {response.url} is alive.")
+    print(response.url)
+
+    return pd.DataFrame(response.json())
+
+def get_camera(os_env = '/home/aordog/rubin_sim_data'):
+
+    from rubin_scheduler.utils import LsstCameraFootprint, _angular_separation
+    print('Getting camera')
+    os.environ['RUBIN_SIM_DATA_DIR'] = os_env
+    camera = LsstCameraFootprint(units='degrees')
+
+    return camera
+
+#####################
+# Setting up Target objects
+#####################
+
+def initialize_data_dict(data):
+
+    if data is None:
+        return {'daily':{}, 'latest':{}, 'total':{}}
+
+def get_metadata_rsv(visits, 
                      ra_t: float, 
-                     dec_t: float,
-                     data: dict):
+                     dec_t: float):
     """Read in meta data from the Rubin Schedule Viewer using input parameters.
 
     See ~tutorial/Commissioning/102_rubin_schedule_viewer.ipynb for how to use
@@ -93,10 +140,7 @@ def get_metadata_rsv(today: str,
         Containing the ra, dec and bands for each visit containing the target.
 
     """
-    
-    # Get the data
-    #visits = rsv_service(today)
-    
+
     r = 3.0
     ra  = np.array(visits["s_ra"])
     dec = np.array(visits["s_dec"])
@@ -105,15 +149,13 @@ def get_metadata_rsv(today: str,
 
     idxs = target_visits_idxs(ra_t, dec_t, r, ra, dec, status)
 
-    if data is None:
-        data = {'daily':{}, 'total':{}}
-    data['daily'][today] = {}
-    data['daily'][today]['ra'] = ra[idxs]
-    data['daily'][today]['dec'] = dec[idxs]
-    data['daily'][today]['band'] = make_fake_bands(len(idxs))
-    data['daily'][today]['rot'] = make_fake_rot(len(idxs))
-    
-    return data
+    visits_use = {}
+    visits_use['ra'] = ra[idxs]
+    visits_use['dec'] = dec[idxs]
+    visits_use['band'] = make_fake_bands(len(idxs))
+    visits_use['rot'] = make_fake_rot(len(idxs))
+
+    return visits_use
 
 def make_fake_bands(nvisits):
 
@@ -125,53 +167,10 @@ def make_fake_rot(nvisits):
 
     return [random.uniform(0, 90) for _ in range(nvisits)]
 
-
-def count_target_visits(today: str,
-                        ra_mem: float, 
-                        dec_mem: float,
-                        ra_grid: np.ndarray, 
-                        dec_grid: np.ndarray,
-                        data: dict):
-
-    for band in ['u','g','r','i','z','y']:
-
-        data['daily'][today][band+'visits'] = []
-        data['total'][band+'visits'] = []
-
-        for i in range(0,len(ra_mem)):
-            dist = np.sqrt((ra_mem[i]-ra_grid)**2 + ((dec_mem[i]-dec_grid)*np.cos(dec_mem[i]*np.pi/180.))**2)
-            idx = dist.argmin()
-
-            data['daily'][today][band+'visits'].append(data['daily'][today][band+'mask'][idx])
-            data['total'][band+'visits'].append(data['total'][band+'mask'][idx])
-
-    return data
-
-
-def rsv_service(date: str) -> pd.DataFrame:
-
-    # Define search parameters from inputs
-    params = {"time": "24", "start": date}
-    
-    # Define the ObsLocTAP URL of the service, which runs at the US Data Facility at SLAC:
-    obsloctap_url = "https://usdf-rsp.slac.stanford.edu/obsloctap"
-
-    # Define the schedule URL and connect to it using requests package:
-    schedule_url = obsloctap_url + "/schedule"
-    response = requests.get(schedule_url, params=params)
-
-    # Assert that the service is alive. - implement as test going forward
-    assert response.status_code == 200, f"request failed with status {response.status_code}"
-    print(f"Rubin Schedule Forecast  at {response.url} is alive.")
-    print(response.url)
-
-    return pd.DataFrame(response.json())
-
-
 def add_mask_grid(pointing_ra, pointing_dec):
 
     samp=0.0166667
-    radius = 2.0 # should work well for nside=16 grouping
+    radius = 2.5 # should work well for nside=16 grouping
 
     ra_grid = np.arange(pointing_ra - radius*np.cos(np.radians(pointing_dec)), 
                    pointing_ra + radius, 
@@ -187,43 +186,59 @@ def add_mask_grid(pointing_ra, pointing_dec):
 
     return ra_grid, dec_grid
 
-def get_camera(os_env = '/home/aordog/rubin_sim_data'):
+def count_target_visits(today: str,
+                        ra_mem: float, 
+                        dec_mem: float,
+                        ra_grid: np.ndarray, 
+                        dec_grid: np.ndarray,
+                        data: dict):
 
-    from rubin_scheduler.utils import LsstCameraFootprint, _angular_separation
-    print('Getting camera')
-    os.environ['RUBIN_SIM_DATA_DIR'] = os_env
-    camera = LsstCameraFootprint(units='degrees')
+    data['daily'][today] = {}
 
-    return camera
+    for band in ['u','g','r','i','z','y']:
 
-def lsstcam_mask(today: str, 
+        listname = band+'visits'
+        maskname = band+'mask'
+
+        data['daily'][today][listname] = []
+        data['total'][listname] = []
+
+        for i in range(0,len(ra_mem)):
+            dist = np.sqrt((ra_mem[i]-ra_grid)**2 + ((dec_mem[i]-dec_grid)*np.cos(dec_mem[i]*np.pi/180.))**2)
+            idx = dist.argmin()
+
+            data['daily'][today][listname].append(data['latest'][maskname][idx])
+            data['total'][listname].append(data['total'][maskname][idx])
+
+    return data
+
+def lsstcam_mask(visits_use: dict,
                 camera,
                 ra_grid: np.ndarray, 
                 dec_grid: np.ndarray,
                 data: dict):
 
-    #camera = get_camera()
-
     bands = ['u','g','r','i','z','y']
     for band in bands:
 
-        data['daily'][today][band+'mask'] = np.zeros(len(ra_grid))
-        # Check for existing cumulative mask and set up if none yet:
-        if data['total'].get(band+'mask') is None:
-            #print('no cumulative data yet')
-            data['total'][band+'mask'] = np.zeros(len(ra_grid))
+        mask_name = band+'mask'
 
-        idxs = np.where(np.array(data['daily'][today]['band']) == band)[0]
+        data['latest'][mask_name] = np.zeros(len(ra_grid))
+
+        # Check for existing cumulative mask and set up if none yet:
+        if data['total'].get(mask_name) is None:
+            data['total'][mask_name] = np.zeros(len(ra_grid))
+
+        idxs = np.where(np.array(visits_use['band']) == band)[0]
         for i in idxs:
            idx_visit = camera(ra_grid, dec_grid, 
-                              data['daily'][today]['ra'][i], 
-                              data['daily'][today]['dec'][i], 
-                              data['daily'][today]['rot'][i])
-           data['daily'][today][band+'mask'][idx_visit] = data['daily'][today][band+'mask'][idx_visit] + 1
-           data['total'][band+'mask'][idx_visit] = data['total'][band+'mask'][idx_visit] + 1
+                              visits_use['ra'][i], 
+                              visits_use['dec'][i], 
+                              visits_use['rot'][i])
+           data['latest'][mask_name][idx_visit] = data['latest'][mask_name][idx_visit] + 1
+           data['total'][mask_name][idx_visit]  = data['total'][mask_name][idx_visit]  + 1
 
     return data
-
 
 def target_visits_idxs(ra_t: float, 
                        dec_t: float, 
@@ -236,6 +251,9 @@ def target_visits_idxs(ra_t: float,
 
     return np.array(np.where((dist < r_ang) & (status=='Performed'))[0])
 
+#####################
+# Table and plots
+#####################
 
 def make_table(target_set):
 
@@ -323,13 +341,10 @@ def time_series(target, member):
 
             # Total visits:
             Nvisits_tot[band].append(Nvisits_prev_tot[band] + Nvisits_today)
-            #print(Nvisits_today, Nvisits_prev_tot[band], Nvisits_tot[band])
 
             # Update previous total tracker:
             Nvisits_prev_tot[band] = Nvisits_tot[band][-1].copy()
             
-            #Nvisits_daily[band].append(target.data[maptype][date][band+'visits_t'])
-
     return t, Nvisits_daily, Nvisits_tot
 
 def visits_maps(target, idx_mem, date, maptype):
@@ -351,10 +366,10 @@ def visits_maps(target, idx_mem, date, maptype):
         for col in range(1, 4):  # cols 1, 2, and 3
 
             if maptype == 'daily':
-                z = target.data[maptype][date][filter_names[row-1][col-1]+'mask']
+                z = target.data['latest'][filter_names[row-1][col-1]+'mask']
             if maptype == 'total':
                 #print('switching to total!')
-                z = target.data[maptype][filter_names[row-1][col-1]+'mask']
+                z = target.data['total'][filter_names[row-1][col-1]+'mask']
 
             fig.add_trace(go.Heatmap(z=z,
                                      x=target.ra_grid, 
@@ -400,9 +415,9 @@ def visits_maps(target, idx_mem, date, maptype):
                 row=row, col=col
             )    
                 
-            fig.update_xaxes(range=[target.ra_gr+2.0, target.ra_gr-2.0], constrain='domain', 
+            fig.update_xaxes(range=[target.ra_gr+2.5, target.ra_gr-2.5], constrain='domain', 
                             row=row, col=col)
-            fig.update_yaxes(range=[target.dec_gr-2.0, target.dec_gr+2.0], constrain='domain', 
+            fig.update_yaxes(range=[target.dec_gr-2.5, target.dec_gr+2.5], constrain='domain', 
                             scaleanchor=f"x{col + (row-1)*3}", 
                             scaleratio=1, row=row, col=col)
         
@@ -470,7 +485,6 @@ def visits_plots(target, member, maptype):
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
 
     return fig_html
-
 
 def make_long_forecast_plot(date, RA_t, dec_t):
 
