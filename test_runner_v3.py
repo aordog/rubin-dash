@@ -1,7 +1,8 @@
 from flask import Flask, jsonify, request, render_template
 import webbrowser
-from rubin_dash.core import CoordListGrouped, Target, VisitsFigures, SummaryTable
-from rubin_dash.utils import get_camera, rsv_service, read_csv_file, table_to_html, make_fake_src_list
+from rubin_dash.core import Target, VisitsFigures, SummaryTable
+from rubin_dash.utils import get_camera, rsv_service, read_csv_file 
+from rubin_dash.utils import table_to_html, make_fake_src_list, group_targets
 import threading
 import time
 from datetime import datetime, timedelta
@@ -20,7 +21,6 @@ state = {
 }
 
 
-
 # Read in the target list:
 ra_t_list, dec_t_list = read_csv_file('NED_result_test2.txt',0.0)
 #ra_t_list, dec_t_list = make_fake_src_list(16, -20.0)
@@ -31,27 +31,18 @@ print(f"Starting code for {len(ra_t_list)} input targets...")
 print('')
 
 # Group the targets from the list
-list_grouped = CoordListGrouped(ra_t_list, dec_t_list, 16).groups
-Ngroups = len(list_grouped['ra_gr'])
+list_grouped = group_targets(ra_t_list, dec_t_list, 16)
 
-
-print(f"Making Targets objects from {Ngroups} groupings...")
+print(f"Making Targets objects from {len(list_grouped)} groupings...")
 print('')
 
 # Make Target objects
-target_set = []
-for i in range(0,Ngroups):
-    target_set.append(Target(list_grouped['ra_gr'][i],
-                             list_grouped['dec_gr'][i],
-                             list_grouped['name_gr'][i],
-                             list_grouped['ra_mem'][i],
-                             list_grouped['dec_mem'][i]))
+target_set = [Target(group) for group in list_grouped]
 
 # Get the camera information
 camera = get_camera()
 print('')
 print('====================================================')
-
 
 
 t_refresh = 20
