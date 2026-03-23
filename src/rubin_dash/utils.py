@@ -62,15 +62,23 @@ def group_targets(ra_list, dec_list, nside):
     pixel_ids = hp.ang2pix(nside, ra_list, dec_list, lonlat=True)
     idx_filled = np.unique(pixel_ids)
 
-    groups = {'name_gr':[],'ra_gr':[],'dec_gr':[],'ra_mem':[],'dec_mem':[]}
-
+    #groups = {'name_gr':[],'ra_gr':[],'dec_gr':[],'ra_mem':[],'dec_mem':[]}
+    #for idx in idx_filled:
+    #    coords_group = hp.pix2ang(nside, idx, lonlat=True)
+    #    groups['ra_gr'].append(coords_group[0])
+    #    groups['dec_gr'].append(coords_group[1])
+    #    groups['name_gr'].append('nside'+str(nside)+'_'+str(idx))
+    #    groups['ra_mem'].append(ra_list[pixel_ids == idx])
+    #    groups['dec_mem'].append(dec_list[pixel_ids == idx])
+    groups = []
     for idx in idx_filled:
-        groups['name_gr'].append('nside'+str(nside)+'_'+str(idx))
         coords_group = hp.pix2ang(nside, idx, lonlat=True)
-        groups['ra_gr'].append(coords_group[0])
-        groups['dec_gr'].append(coords_group[1])
-        groups['ra_mem'].append(ra_list[pixel_ids == idx])
-        groups['dec_mem'].append(dec_list[pixel_ids == idx])
+        group_dict = {'name_gr': 'nside'+str(nside)+'_'+str(idx),
+                      'ra_gr'  : coords_group[0],
+                      'dec_gr' : coords_group[1],
+                      'ra_mem' : ra_list[pixel_ids == idx],
+                      'dec_mem': dec_list[pixel_ids == idx]}
+        groups.append(group_dict)
 
     return groups
 

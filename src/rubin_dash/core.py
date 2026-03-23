@@ -9,17 +9,6 @@ import rubin_dash.utils as utils
 import pandas as pd
 import numpy as np
 
-
-class CoordListGrouped:
-    '''A class for grouped input target list
-    '''
-
-    def __init__(self, ra_list,dec_list,nside,
-                 description: str = "Grouped list of coordinates"):
-        self.description = description
-        self.groups = utils.group_targets(ra_list,dec_list,nside)
-
-
 class Target:
     """A class for information pertaining to a single target.
 
@@ -38,16 +27,16 @@ class Target:
         The methods for the Target class serve to populate this dictionary.
     """
 
-    def __init__(self, ra_gr:float, dec_gr:float, name_gr:str,
-                 ra_mem:np.ndarray, dec_mem:np.ndarray, 
+    def __init__(self, group: dict, 
                  description: str = "Target group specifics"):
         self.description = description
-        self.ra_gr  = ra_gr
-        self.dec_gr = dec_gr
-        self.name_gr = name_gr
-        self.ra_mem  = ra_mem
-        self.dec_mem = dec_mem
-        self.ra_grid, self.dec_grid = utils.add_mask_grid(ra_gr, dec_gr)
+        self.ra_gr   = group['ra_gr']
+        self.dec_gr  = group['dec_gr']
+        self.name_gr = group['name_gr']
+        self.ra_mem  = group['ra_mem']
+        self.dec_mem = group['dec_mem']
+        self.ra_grid, self.dec_grid = utils.add_mask_grid(group['ra_gr'], 
+                                                          group['dec_gr'])
         self.data: dict | None = None
         self.data = utils.initialize_data_dict(self.data)
 
