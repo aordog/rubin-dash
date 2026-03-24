@@ -21,6 +21,12 @@ from astropy.coordinates import SkyCoord
 from astropy import coordinates as coord
 import ephem
 import healpy as hp
+import psycopg2
+import psycopg2.extras
+
+BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
+MASK_COLS = [f'{b}mask' for b in BANDS]
+VISIT_COLS = [f'{b}visits' for b in BANDS]
 
 #####################
 # Data preparation
@@ -62,25 +68,159 @@ def group_targets(ra_list, dec_list, nside):
     pixel_ids = hp.ang2pix(nside, ra_list, dec_list, lonlat=True)
     idx_filled = np.unique(pixel_ids)
 
-    #groups = {'name_gr':[],'ra_gr':[],'dec_gr':[],'ra_mem':[],'dec_mem':[]}
-    #for idx in idx_filled:
-    #    coords_group = hp.pix2ang(nside, idx, lonlat=True)
-    #    groups['ra_gr'].append(coords_group[0])
-    #    groups['dec_gr'].append(coords_group[1])
-    #    groups['name_gr'].append('nside'+str(nside)+'_'+str(idx))
-    #    groups['ra_mem'].append(ra_list[pixel_ids == idx])
-    #    groups['dec_mem'].append(dec_list[pixel_ids == idx])
     groups = []
     for idx in idx_filled:
         coords_group = hp.pix2ang(nside, idx, lonlat=True)
         group_dict = {'name_gr': 'nside'+str(nside)+'_'+str(idx),
-                      'ra_gr'  : coords_group[0],
-                      'dec_gr' : coords_group[1],
+                      'ra_gr'  : float(coords_group[0]),
+                      'dec_gr' : float(coords_group[1]),
                       'ra_mem' : ra_list[pixel_ids == idx],
                       'dec_mem': dec_list[pixel_ids == idx]}
         groups.append(group_dict)
 
     return groups
+
+def setup_targets(conn, user_id, list_grouped):
+    """Populate groups + members. Run once."""
+
+    cur = conn.cursor()
+
+    for group in list_grouped:
+
+        # Make the grids centred on each group for the masks:
+        ra_grid, dec_grid = add_mask_grid(group['ra_gr'], group['dec_gr'])
+
+        # Add group info to the 'groups' table, returning the group ID:
+        cur.execute("""
+            INSERT INTO groups (user_id, name_gr, ra_gr, dec_gr, ra_grid, dec_grid)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING group_id
+        """, (user_id, group['name_gr'], group['ra_gr'], group['dec_gr'],
+              psycopg2.Binary(ra_grid.tobytes()),
+              psycopg2.Binary(dec_grid.tobytes())))
+        
+        # Extract group ID to use in 'members' table:
+        gid = cur.fetchone()[0]
+
+        # For each group, add all the member-target info to the 'members' group
+        for idx, (ra_mem, dec_mem) in enumerate(zip(group['ra_mem'], group['dec_mem'])):
+            cur.execute("""
+                INSERT INTO members (group_id, member_idx, ra_mem, dec_mem)
+                VALUES (%s, %s, %s, %s)
+            """, (gid, idx, float(ra_mem), float(dec_mem)))
+
+    # Save everything to the database:
+    conn.commit()
+
+    return
+
+
+def read_grid_and_mask(gid, cur):
+
+    # Load grids needed for making the mask:
+    cur.execute(
+            "SELECT ra_gr, dec_gr, ra_grid, dec_grid FROM groups WHERE group_id = %s",
+            (gid,))
+    grp = cur.fetchone()
+    ra_grid  = np.frombuffer(grp['ra_grid'])
+    dec_grid = np.frombuffer(grp['dec_grid'])
+
+    # Load existing total masks (zeros on first day):
+    cols = ', '.join(MASK_COLS)
+    cur.execute(f"""
+                SELECT {cols}
+                FROM group_masks WHERE group_id = %s AND mask_type = 'total'
+                """, (gid,))
+    mask_row = cur.fetchone()
+
+    return ra_grid, dec_grid, mask_row
+
+
+def process_group(gid, date, visits, camera, conn):
+
+    """Load one group from DB, compute masks, save → return (memory freed)."""
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    ra_grid, dec_grid, mask_row = read_grid_and_mask(gid, cur)
+
+    if mask_row and mask_row[MASK_COLS[0]] is not None:
+        totals = {col: np.frombuffer(mask_row[col]).copy() for col in MASK_COLS}
+    else:
+        totals = {col: np.zeros(len(ra_grid)) for col in MASK_COLS}
+
+    # Compute today's masks:
+    latest = compute_daily_masks(visits, camera, ra_grid, dec_grid)
+    #print(gid, latest.keys())
+
+    # Add today's mask to the totals:
+    for col in MASK_COLS:
+        totals[col] += latest[col]
+
+    # Save both mask sets
+    _upsert_masks(cur, gid, 'latest', latest)
+    _upsert_masks(cur, gid, 'total',  totals)
+
+
+    # Load members for the selected group:
+    cur.execute("""
+                SELECT member_id, ra_mem, dec_mem FROM members
+                WHERE group_id = %s ORDER BY member_idx
+                """, (gid,))
+    
+    # Compute total and daily visits:
+    for mem in cur.fetchall():
+        total_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, totals)
+        daily_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, latest)
+        print(gid, total_v['uvisits'], daily_v['uvisits'])
+        
+        # Save daily and total visits
+        _upsert_member_totals(cur, mem['member_id'], total_v)
+        _insert_daily_visits(cur, date, mem['member_id'], daily_v)
+
+    conn.commit()
+    
+    return
+
+# ---------- helper writers ----------
+
+def _upsert_masks(cur, gid, mask_type, masks):
+    cols = ', '.join(MASK_COLS)
+    phs  = ', '.join(['%s'] * len(MASK_COLS))
+    sets = ', '.join(f"{c} = EXCLUDED.{c}" for c in MASK_COLS)
+
+    cur.execute(f"""
+        INSERT INTO group_masks
+               (group_id, mask_type, updated_at, {cols})
+        VALUES (%s, %s, NOW(), {phs})
+        ON CONFLICT (group_id, mask_type) DO UPDATE SET
+            updated_at = NOW(),
+            {sets}
+    """, (gid, mask_type,
+          *[psycopg2.Binary(masks[col].tobytes()) for col in MASK_COLS]))
+
+def _upsert_member_totals(cur, member_id, v):
+    cols = ', '.join(VISIT_COLS)
+    phs  = ', '.join(['%s'] * len(VISIT_COLS))
+    sets = ', '.join(f"{c} = EXCLUDED.{c}" for c in VISIT_COLS)
+
+    cur.execute(f"""
+        INSERT INTO member_totals (member_id, {cols})
+        VALUES (%s, {phs})
+        ON CONFLICT (member_id) DO UPDATE SET
+            {sets}
+    """, (member_id, *[v[b] for b in VISIT_COLS]))
+
+def _insert_daily_visits(cur, date, member_id, v):
+    cols = ', '.join(VISIT_COLS)
+    phs  = ', '.join(['%s'] * len(VISIT_COLS))
+
+    cur.execute(f"""
+        INSERT INTO member_daily_visits
+               (time, member_id, {cols})
+        VALUES (%s, %s, {phs})
+    """, (date, member_id, *[v[b] for b in VISIT_COLS]))
+
 
 #####################
 # Rubin services
@@ -220,6 +360,39 @@ def count_target_visits(today: str,
 
     return data
 
+def compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
+
+    visits_counts = {}
+
+    dist = np.sqrt((ra_mem-ra_grid)**2 + ((dec_mem-dec_grid)*np.cos(dec_mem*np.pi/180.))**2)
+    idx = dist.argmin()
+
+    for listname, maskname in zip(VISIT_COLS, MASK_COLS):
+        visits_counts[listname] = float(mask[maskname][idx])
+
+    return visits_counts
+
+def compute_daily_masks(visits_use: dict,
+                        camera,
+                        ra_grid: np.ndarray, 
+                        dec_grid: np.ndarray):
+
+    latest = {}
+
+    for band, mask_name in zip(BANDS, MASK_COLS):
+
+        latest[mask_name] = np.zeros(len(ra_grid))
+
+        idxs = np.where(np.array(visits_use['band']) == band)[0]
+        for i in idxs:
+           idx_visit = camera(ra_grid, dec_grid, 
+                              visits_use['ra'][i], 
+                              visits_use['dec'][i], 
+                              visits_use['rot'][i])
+           latest[mask_name][idx_visit] = latest[mask_name][idx_visit] + 1
+
+    return latest
+
 def lsstcam_mask(visits_use: dict,
                 camera,
                 ra_grid: np.ndarray, 
@@ -235,6 +408,7 @@ def lsstcam_mask(visits_use: dict,
 
         # Check for existing cumulative mask and set up if none yet:
         if data['total'].get(mask_name) is None:
+            print('no cumulative mask exists yet')
             data['total'][mask_name] = np.zeros(len(ra_grid))
 
         idxs = np.where(np.array(visits_use['band']) == band)[0]
@@ -301,6 +475,52 @@ def make_table(target_set):
 
     return table
 
+
+def make_table_new(conn):
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute(f"""
+        SELECT g.name_gr, g.group_id,
+               m.member_id, m.ra_mem, m.dec_mem,
+               {', '.join(f't.{c}' for c in VISIT_COLS)}
+        FROM members m
+        JOIN groups g        ON g.group_id  = m.group_id
+        LEFT JOIN member_totals t ON t.member_id = m.member_id
+        ORDER BY g.group_id, m.member_id
+    """)
+    rows = cur.fetchall()
+
+    visits_dict = {
+        'Name': [], 'RA': [], 'dec': [],
+        'gr_num': [], 'mem_num': [],
+        **{b: [] for b in BANDS}
+    }
+    row_ids = []
+
+    prev_gid, mem_idx = None, 0
+    for n, r in enumerate(rows):
+        if r['group_id'] != prev_gid:
+            prev_gid = r['group_id']
+            mem_idx = 0
+        else:
+            mem_idx += 1
+
+        visits_dict['Name'].append(r['name_gr'])
+        visits_dict['RA'].append(r['ra_mem'])
+        visits_dict['dec'].append(r['dec_mem'])
+        visits_dict['gr_num'].append(r['group_id'])
+        visits_dict['mem_num'].append(mem_idx)
+        row_ids.append(f"{n:02d}")
+
+        for b in BANDS:
+            visits_dict[b].append(int(r[f'{b}visits'] or 0))
+
+    table = pd.DataFrame(visits_dict, index=row_ids)
+    table.index.name = "ID"
+
+    return table
+
+
 def table_to_html(df):
     html = '<table class="data-table">\n<thead>\n<tr>'
 
@@ -355,7 +575,7 @@ def time_series(target, member):
             
     return t, Nvisits_daily, Nvisits_tot
 
-def visits_maps(target, idx_mem, date, maptype):
+def visits_maps(target, idx_mem, maptype):
 
     filter_names = [['u', 'g', 'r'], ['i', 'z', 'y']]
     titles = ['u','g','r','i','z','y',]
@@ -394,34 +614,34 @@ def visits_maps(target, idx_mem, date, maptype):
                             ), 
                             row=row, col=col
             )
-            fig.add_trace(
-            go.Scatter(
-                x=target.ra_mem,
-                y=target.dec_mem,
-                showlegend=False,
-                mode='markers',
-                marker=dict(
-                    size=3,
-                    color='black',
-                    symbol='circle'
-                    )
-                ),
-                row=row, col=col
-            )
-            fig.add_trace(
-            go.Scatter(
-                x=[target.ra_mem[idx_mem]],
-                y=[target.dec_mem[idx_mem]],
-                mode='markers',
-                showlegend=False,
-                marker=dict(
-                    size=5,
-                    color='lightgreen',
-                    symbol='circle'
-                    )
-                ),
-                row=row, col=col
-            )    
+            #fig.add_trace(
+            #go.Scatter(
+            #    x=target.ra_mem,
+            #    y=target.dec_mem,
+            #    showlegend=False,
+            #    mode='markers',
+            #    marker=dict(
+            #        size=3,
+            #        color='black',
+            #        symbol='circle'
+            #        )
+            #    ),
+            #    row=row, col=col
+            #)
+            #fig.add_trace(
+            #go.Scatter(
+            #    x=[target.ra_mem[idx_mem]],
+            #    y=[target.dec_mem[idx_mem]],
+            #    mode='markers',
+            #    showlegend=False,
+            #    marker=dict(
+            #        size=5,
+            #        color='lightgreen',
+            #        symbol='circle'
+            #        )
+            #    ),
+            #    row=row, col=col
+            #)    
                 
             fig.update_xaxes(range=[target.ra_gr+2.5, target.ra_gr-2.5], constrain='domain', 
                             row=row, col=col)
@@ -585,3 +805,58 @@ def make_long_forecast_plot(date, RA_t, dec_t):
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
 
     return fig_html
+
+from types import SimpleNamespace
+
+def load_target(conn, gid):
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # Group-level data
+    cur.execute("""
+        SELECT ra_gr, dec_gr, ra_grid, dec_grid
+        FROM groups WHERE group_id = %s
+    """, (gid,))
+    grp = cur.fetchone()
+
+    ra_gr    = grp['ra_gr']
+    dec_gr   = grp['dec_gr']
+    ra_grid  = np.frombuffer(grp['ra_grid'])
+    dec_grid = np.frombuffer(grp['dec_grid'])
+
+    # Member coordinates
+    cur.execute("""
+        SELECT ra_mem, dec_mem FROM members
+        WHERE group_id = %s ORDER BY member_id
+    """, (gid,))
+    members = cur.fetchall()
+    ra_mem  = np.array([m['ra_mem']  for m in members])
+    dec_mem = np.array([m['dec_mem'] for m in members])
+
+    # Masks
+    cols = ', '.join(MASK_COLS)
+    cur.execute(f"""
+        SELECT mask_type, {cols}
+        FROM group_masks
+        WHERE group_id = %s AND mask_type IN ('latest', 'total')
+    """, (gid,))
+
+    data = {}
+    for row in cur.fetchall():
+        mtype = row['mask_type']
+        data[mtype] = {col: np.frombuffer(row[col]) for col in MASK_COLS}
+
+    n = len(ra_grid)
+    for mtype in ('latest', 'total'):
+        if mtype not in data:
+            data[mtype] = {col: np.zeros(n) for col in MASK_COLS}
+
+    target = SimpleNamespace(
+        data=data,
+        ra_gr=ra_gr,
+        dec_gr=dec_gr,
+        ra_grid=ra_grid,
+        dec_grid=dec_grid,
+        ra_mem=ra_mem,
+        dec_mem=dec_mem,
+    )
+    return target
