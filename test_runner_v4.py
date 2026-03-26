@@ -10,6 +10,15 @@ from rubin_dash.utils import visits_maps, load_target
 import threading
 import time
 from datetime import datetime, timedelta
+import logging
+
+class QuietFilter(logging.Filter):
+    NOISY = {'/check_update', '/next_update'}
+
+    def filter(self, record):
+        return not any(path in record.getMessage() for path in self.NOISY)
+
+logging.getLogger('werkzeug').addFilter(QuietFilter())
 
 
 # Read in the target list:
@@ -73,6 +82,9 @@ def data_loop():
         ## Signal that processing has started
         with state_lock:
             state["updating"] = True
+            state["progress"] = 0.0
+            state["progress_msg"] = f"Processing {date}..."
+
 
         # Get the Rubin visits table for the day:
         visits = rsv_service(date)
@@ -84,9 +96,12 @@ def data_loop():
             # Access the groups table, specifying ordering by group_id:
             cur.execute("SELECT group_id, ra_gr, dec_gr FROM groups WHERE user_id = %s ORDER BY group_id",
                 (user_id,))
+            rows = cur.fetchall()
+            n_groups = len(rows)
+
 
             # Loop through all groups:
-            for row in cur:
+            for i, row in enumerate(rows):
 
                 # Get the Rubin LSST visits for the group pointings:
                 visits_use = get_metadata_rsv(visits, row['ra_gr'], row['dec_gr'])
@@ -94,10 +109,15 @@ def data_loop():
                 # Calculate the masks and visits at each target:
                 process_group(row['group_id'], date, visits_use, camera, conn)
 
+                with state_lock:
+                    state["progress"] = (i + 1) / n_groups
+                    state["progress_msg"] = f"UPDATING... processing group {i+1}/{n_groups}"
+
+
             # New table and plots for the day:
             table = make_table_new(conn)
             target = load_target(conn, 1) #gid=1
-            fig1_html = visits_maps(target, 1, 'daily') #idx_mem=1
+            fig1_html = visits_maps(target, 0, 'daily') #idx_mem=1
 
             # Swap in the new data
             with state_lock:
@@ -106,6 +126,7 @@ def data_loop():
                 state["fig1_html"] = fig1_html
                 state["version"] += 1
                 state["updating"]    = False
+                state["progress"]    = 0.0
                 state["next_update"] = time.time() + t_refresh
 
             print('============================')
@@ -135,6 +156,40 @@ def home():
                            table_html=table_html, version=version,
                            countdown_seconds=max(0, next_update - server_time))
 
+@app.route("/row_clicked", methods=["POST"])
+def row_clicked():
+    data = request.get_json()
+    index = data["index"]
+    gn = data["gn"]
+    mn = data["mn"]
+    maptype = data.get("maptype", "daily")
+    print(f"Row {index} was clicked (maptype={maptype}, group:{gn}, member:{mn})!")
+
+    #with state_lock:
+    #    date = state["date"]
+
+    target = load_target(conn, int(gn)) 
+    fig1_html_new = visits_maps(target, int(mn), maptype) 
+
+    return jsonify({"status": "ok", "fig1_html": fig1_html_new})
+
+@app.route("/maptype_clicked", methods=["POST"])
+def maptype_clicked():
+    data = request.get_json()
+    maptype = data["maptype"]
+    index = data.get("index", 0)
+    gn = data["gn"]
+    mn = data["mn"]
+    print(f"Map type {maptype} was clicked (table row={index}, group:{gn}, member:{mn})!")
+
+    #with state_lock:
+    #    date = state["date"]
+
+    target = load_target(conn, int(gn)) 
+    fig1_html_new = visits_maps(target, int(mn), maptype)
+
+    return jsonify({"status": "ok", "fig1_html": fig1_html_new})
+
 
 @app.route("/check_update")
 def check_update():
@@ -147,7 +202,10 @@ def next_update():
         return jsonify({
             "next_update": state.get("next_update", 0),
             "server_time": time.time(),
-            "updating":    state.get("updating", False)
+            "updating":    state.get("updating", False),
+            "progress":     state.get("progress", 0.0),
+            "progress_msg": state.get("progress_msg", ""),
+
         })
 
 if __name__ == "__main__":
