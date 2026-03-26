@@ -27,9 +27,12 @@
                         <button class="maptype-btn active" data-maptype="daily" onclick="sendMapType('daily')">Daily</button>
                         <button class="maptype-btn" data-maptype="total" onclick="sendMapType('total')">Cumulative</button>
                     </div>
-                <!-- Countdown display -->
+                <!-- Countdown + progress bar -->
                 <div id="countdown-display">
-                    Next update: <span id="countdown-value">--</span>
+                    <span id="countdown-value">Next update: --</span>
+                    <div class="progress-track">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
                 </div>
             </div>
 
