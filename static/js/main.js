@@ -11,7 +11,7 @@ const SERVER_DATA = {
 // ---- Client-side state ----
 let currentIndex   = 0;
 let currentMaptype = 'daily';
-let currentGn      = '0';  
+let currentGn      = '1';  
 let currentMn      = '0';  
 
 
@@ -78,19 +78,32 @@ setInterval(async () => {
 }, 2000);
 
 
-// ---- Countdown timer ----
+// ---- Countdown + progress bar ----
 let remaining = SERVER_DATA.countdownSeconds;
 let updating  = false;
+let progress  = 0;
+let progressMsg = '';
+
+const T_REFRESH = SERVER_DATA.countdownSeconds;
 
 function updateCountdown() {
-    const el = document.getElementById('countdown-value');
+    const el    = document.getElementById('countdown-value');
+    const fill  = document.getElementById('progress-fill');
+    const track = document.querySelector('.progress-track');
+
     if (updating) {
-        el.textContent = 'Updating...';
-    } else if (remaining > 0) {
-        el.textContent = remaining.toFixed(0) + 's';
-        remaining -= 1;
+        track.style.display  = 'block';
+        el.textContent       = progressMsg || 'Processing...';
+        fill.style.width     = Math.round(progress * 100) + '%';
+        fill.style.background = '#2196F3';
     } else {
-        el.textContent = '0s';
+        track.style.display  = 'none';
+        if (remaining > 0) {
+            el.textContent = 'Next update in ' + Math.ceil(remaining) + 's';
+            remaining -= 1;
+        } else {
+            el.textContent = 'Next update in 0s';
+        }
     }
 }
 
@@ -98,7 +111,9 @@ function refreshCountdown() {
     fetch('/next_update')
         .then(r => r.json())
         .then(data => {
-            updating = data.updating;
+            updating    = data.updating;
+            progress    = data.progress    || 0;
+            progressMsg = data.progress_msg || '';
             if (!updating) {
                 remaining = Math.max(0, data.next_update - data.server_time);
             }
