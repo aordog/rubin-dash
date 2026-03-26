@@ -23,6 +23,8 @@ import ephem
 import healpy as hp
 import psycopg2
 import psycopg2.extras
+import zlib
+from types import SimpleNamespace
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -145,13 +147,13 @@ def process_group(gid, date, visits, camera, conn):
     ra_grid, dec_grid, mask_row = read_grid_and_mask(gid, cur)
 
     if mask_row and mask_row[MASK_COLS[0]] is not None:
-        totals = {col: np.frombuffer(mask_row[col]).copy() for col in MASK_COLS}
+        totals = {col: np.frombuffer(mask_row[col], dtype=np.int16).copy() for col in MASK_COLS}
     else:
-        totals = {col: np.zeros(len(ra_grid)) for col in MASK_COLS}
+        totals = {col: np.zeros(len(ra_grid), dtype=np.int16) for col in MASK_COLS}
 
     # Compute today's masks:
     latest = compute_daily_masks(visits, camera, ra_grid, dec_grid)
-    #print(gid, latest.keys())
+    latest = {col: latest[col].astype(np.int16) for col in MASK_COLS}
 
     # Add today's mask to the totals:
     for col in MASK_COLS:
@@ -160,7 +162,6 @@ def process_group(gid, date, visits, camera, conn):
     # Save both mask sets
     _upsert_masks(cur, gid, 'latest', latest)
     _upsert_masks(cur, gid, 'total',  totals)
-
 
     # Load members for the selected group:
     cur.execute("""
@@ -172,7 +173,6 @@ def process_group(gid, date, visits, camera, conn):
     for mem in cur.fetchall():
         total_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, totals)
         daily_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, latest)
-        print(gid, total_v['uvisits'], daily_v['uvisits'])
         
         # Save daily and total visits
         _upsert_member_totals(cur, mem['member_id'], total_v)
@@ -197,7 +197,7 @@ def _upsert_masks(cur, gid, mask_type, masks):
             updated_at = NOW(),
             {sets}
     """, (gid, mask_type,
-          *[psycopg2.Binary(masks[col].tobytes()) for col in MASK_COLS]))
+          *[psycopg2.Binary(masks[col].astype(np.int16).tobytes()) for col in MASK_COLS]))
 
 def _upsert_member_totals(cur, member_id, v):
     cols = ', '.join(VISIT_COLS)
@@ -614,34 +614,34 @@ def visits_maps(target, idx_mem, maptype):
                             ), 
                             row=row, col=col
             )
-            #fig.add_trace(
-            #go.Scatter(
-            #    x=target.ra_mem,
-            #    y=target.dec_mem,
-            #    showlegend=False,
-            #    mode='markers',
-            #    marker=dict(
-            #        size=3,
-            #        color='black',
-            #        symbol='circle'
-            #        )
-            #    ),
-            #    row=row, col=col
-            #)
-            #fig.add_trace(
-            #go.Scatter(
-            #    x=[target.ra_mem[idx_mem]],
-            #    y=[target.dec_mem[idx_mem]],
-            #    mode='markers',
-            #    showlegend=False,
-            #    marker=dict(
-            #        size=5,
-            #        color='lightgreen',
-            #        symbol='circle'
-            #        )
-            #    ),
-            #    row=row, col=col
-            #)    
+            fig.add_trace(
+            go.Scatter(
+                x=target.ra_mem,
+                y=target.dec_mem,
+                showlegend=False,
+                mode='markers',
+                marker=dict(
+                    size=3,
+                    color='black',
+                    symbol='circle'
+                    )
+                ),
+                row=row, col=col
+            )
+            fig.add_trace(
+            go.Scatter(
+                x=[target.ra_mem[idx_mem]],
+                y=[target.dec_mem[idx_mem]],
+                mode='markers',
+                showlegend=False,
+                marker=dict(
+                    size=5,
+                    color='lightgreen',
+                    symbol='circle'
+                    )
+                ),
+                row=row, col=col
+            )    
                 
             fig.update_xaxes(range=[target.ra_gr+2.5, target.ra_gr-2.5], constrain='domain', 
                             row=row, col=col)
@@ -806,8 +806,6 @@ def make_long_forecast_plot(date, RA_t, dec_t):
 
     return fig_html
 
-from types import SimpleNamespace
-
 def load_target(conn, gid):
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -843,7 +841,7 @@ def load_target(conn, gid):
     data = {}
     for row in cur.fetchall():
         mtype = row['mask_type']
-        data[mtype] = {col: np.frombuffer(row[col]) for col in MASK_COLS}
+        data[mtype] = {col: np.frombuffer(row[col], dtype=np.int16) for col in MASK_COLS}
 
     n = len(ra_grid)
     for mtype in ('latest', 'total'):
