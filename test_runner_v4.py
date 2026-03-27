@@ -1,64 +1,26 @@
-import psycopg2
-import psycopg2.extras
-import numpy as np
 from flask import Flask, jsonify, request, render_template
 import webbrowser
-from rubin_dash.core import Target2, VisitsFigures, SummaryTable
-from rubin_dash.utils import get_camera, rsv_service, read_csv_file, add_mask_grid, get_metadata_rsv 
-from rubin_dash.utils import table_to_html, make_fake_src_list, group_targets, setup_targets, process_group, make_table_new
-from rubin_dash.utils import visits_maps, load_target
+from rubin_dash.core import initialize_tracking, populate_database
+from rubin_dash.core import QuietFilter, TableData, TargetMap, TargetTimeSeries
+from rubin_dash.utils import rsv_service
 import threading
 import time
 from datetime import datetime, timedelta
 import logging
 
-class QuietFilter(logging.Filter):
-    NOISY = {'/check_update', '/next_update'}
+###############
+t_refresh = 20
+user_id   = 1
+###############
 
-    def filter(self, record):
-        return not any(path in record.getMessage() for path in self.NOISY)
-
+# Suppress un-needed outputs to terminal/logs:
 logging.getLogger('werkzeug').addFilter(QuietFilter())
 
+# Initialize the run, returning the LSST camera and 
+# the DataBase connection and cursor:
+camera, conn, cur = initialize_tracking(user_id, 'NED_result_test2.txt', 0.0)
 
-# Read in the target list:
-ra_t_list, dec_t_list = read_csv_file('NED_result_test2.txt',0.0)
-
-print('====================================================')
-print('')
-print(f"Starting code for {len(ra_t_list)} input targets...")
-print('')
-
-# Group the targets from the list
-list_grouped = group_targets(ra_t_list, dec_t_list, 16)
-
-
-# Open a connection
-conn = psycopg2.connect(dbname="lsst_database")
-
-# Use a DictCursor to safely specify columns later
-cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-# Define this user as 1
-user_id = 1
-
-# Check whether targets have already been loaded into this user's table
-cur.execute("SELECT COUNT(*) FROM groups WHERE user_id = %s", (user_id,))
-if cur.fetchone()[0] > 0:
-    print("Targets already loaded for this user. Skipping.")
-else:
-    # Load the grouped targets into the tables
-    setup_targets(conn, user_id, list_grouped)
-
-# Get the camera information
-camera = get_camera()
-print('')
-print('====================================================')
-
-
-t_refresh = 20
 # ---------- Background data loop ----------
-
 start = datetime.strptime('2025-08-20', '%Y-%m-%d')
 end   = datetime.strptime('2025-11-30', '%Y-%m-%d')
 dates = [(start + timedelta(days=i)).strftime('%Y-%m-%d')
@@ -71,6 +33,7 @@ state_lock = threading.Lock()
 state = {
     "date": None,
     "fig1_html": "",
+    "fig2_html": "",
     "table": None,
     "version": 0,
 }
@@ -85,7 +48,6 @@ def data_loop():
             state["progress"] = 0.0
             state["progress_msg"] = f"Processing {date}..."
 
-
         # Get the Rubin visits table for the day:
         visits = rsv_service(date)
 
@@ -93,37 +55,27 @@ def data_loop():
         if visits.empty:
             print(f"DATA MISSING for {date}")
         else:
-            # Access the groups table, specifying ordering by group_id:
-            cur.execute("SELECT group_id, ra_gr, dec_gr FROM groups WHERE user_id = %s ORDER BY group_id",
-                (user_id,))
-            rows = cur.fetchall()
-            n_groups = len(rows)
+            populate_database(conn, cur, camera, user_id, visits, date,
+                              state_lock, state)
 
+            table = TableData()
+            table.populate_table_cursor(cur)
+            table_html = table.make_html_table()
 
-            # Loop through all groups:
-            for i, row in enumerate(rows):
+            target = TargetMap()
+            target.populate_2D_map(1, cur)
+            fig1_html = target.make_html_visits_map(0, 'daily')
 
-                # Get the Rubin LSST visits for the group pointings:
-                visits_use = get_metadata_rsv(visits, row['ra_gr'], row['dec_gr'])
-
-                # Calculate the masks and visits at each target:
-                process_group(row['group_id'], date, visits_use, camera, conn)
-
-                with state_lock:
-                    state["progress"] = (i + 1) / n_groups
-                    state["progress_msg"] = f"UPDATING... processing group {i+1}/{n_groups}"
-
-
-            # New table and plots for the day:
-            table = make_table_new(conn)
-            target = load_target(conn, 1) #gid=1
-            fig1_html = visits_maps(target, 0, 'daily') #idx_mem=1
+            timeseries = TargetTimeSeries()
+            timeseries.populate_times_series(1, 0, cur) #gid=1, mem_idx=0
+            fig2_html  = timeseries.make_html_visits_plot('daily')
 
             # Swap in the new data
             with state_lock:
                 state["date"]     = date
-                state["table"]    = table
+                state["table"]    = table_html
                 state["fig1_html"] = fig1_html
+                state["fig2_html"] = fig2_html
                 state["version"] += 1
                 state["updating"]    = False
                 state["progress"]    = 0.0
@@ -143,17 +95,17 @@ def home():
     with state_lock:
         date     = state["date"]
         fig1_html = state["fig1_html"]
-        table    = state["table"]
+        fig2_html = state["fig2_html"]
+        table_html= state["table"]
         version  = state["version"]
         next_update = state.get("next_update", 0)
         server_time = time.time()
 
-    if table is None:
+    if table_html is None:
         return "<h2>Data loading...</h2><meta http-equiv='refresh' content='2'>"
 
-    table_html = table_to_html(table)
     return render_template('index.html', date=date,fig1_html=fig1_html, 
-                           table_html=table_html, version=version,
+                           fig2_html=fig2_html, table_html=table_html, version=version,
                            countdown_seconds=max(0, next_update - server_time))
 
 @app.route("/row_clicked", methods=["POST"])
@@ -168,10 +120,16 @@ def row_clicked():
     #with state_lock:
     #    date = state["date"]
 
-    target = load_target(conn, int(gn)) 
-    fig1_html_new = visits_maps(target, int(mn), maptype) 
+    target = TargetMap()
+    target.populate_2D_map(int(gn), cur)
+    fig1_html_new = target.make_html_visits_map(int(mn), maptype)
 
-    return jsonify({"status": "ok", "fig1_html": fig1_html_new})
+    timeseries = TargetTimeSeries()
+    timeseries.populate_times_series(int(gn), int(mn), cur) #gid=1, mem_idx=0
+    fig2_html_new  = timeseries.make_html_visits_plot(maptype)
+
+    return jsonify({"status": "ok", "fig1_html": fig1_html_new,
+                    "fig2_html": fig2_html_new})
 
 @app.route("/maptype_clicked", methods=["POST"])
 def maptype_clicked():
@@ -185,10 +143,16 @@ def maptype_clicked():
     #with state_lock:
     #    date = state["date"]
 
-    target = load_target(conn, int(gn)) 
-    fig1_html_new = visits_maps(target, int(mn), maptype)
+    target = TargetMap()
+    target.populate_2D_map(int(gn), cur)
+    fig1_html_new = target.make_html_visits_map(int(mn), maptype)
 
-    return jsonify({"status": "ok", "fig1_html": fig1_html_new})
+    timeseries = TargetTimeSeries()
+    timeseries.populate_times_series(int(gn), int(mn), cur) #gid=1, mem_idx=0
+    fig2_html_new  = timeseries.make_html_visits_plot(maptype)
+
+    return jsonify({"status": "ok", "fig1_html": fig1_html_new,
+                    "fig2_html": fig2_html_new})
 
 
 @app.route("/check_update")
