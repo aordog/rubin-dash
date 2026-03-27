@@ -1,5 +1,5 @@
 from . import utils
-from .core import Target
+from .core import TargetMap
 #from .test import test
 
 try:

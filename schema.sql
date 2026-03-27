@@ -36,14 +36,17 @@ CREATE TABLE group_masks (
 
 -- 4. Cumulative visit count per source (overwritten daily)
 CREATE TABLE member_totals (
-    member_id   INT PRIMARY KEY REFERENCES members(member_id),
+    time        DATE NOT NULL,
+    member_id   INT REFERENCES members(member_id),
     uvisits    DOUBLE PRECISION DEFAULT 0,
     gvisits    DOUBLE PRECISION DEFAULT 0,
     rvisits    DOUBLE PRECISION DEFAULT 0,
     ivisits    DOUBLE PRECISION DEFAULT 0,
     zvisits    DOUBLE PRECISION DEFAULT 0,
-    yvisits    DOUBLE PRECISION DEFAULT 0
+    yvisits    DOUBLE PRECISION DEFAULT 0,
+    PRIMARY KEY (time, member_id)
 );
+-- SELECT create_hypertable('member_daily_visits', 'time');
 
 -- 5. One row per source per day (append-only time series)
 CREATE TABLE member_daily_visits (
