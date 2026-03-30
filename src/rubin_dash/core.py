@@ -35,7 +35,21 @@ class QuietFilter(logging.Filter):
 
     def filter(self, record):
         return not any(path in record.getMessage() for path in self.NOISY)
-    
+
+class Logger:
+    def __init__(self, *destinations):
+        self.destinations = destinations
+        self.at_line_start = True
+
+    def write(self, msg):
+        self.at_line_start = utils.write(
+            self.destinations, msg, self.at_line_start
+        )
+
+    def flush(self):
+        for dest in self.destinations:
+            dest.flush()
+
 class TableData:
     """A class for data needed to make the table display.
 

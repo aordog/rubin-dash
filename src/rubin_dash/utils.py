@@ -14,15 +14,21 @@ import pandas as pd
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import random # only needed for making fake bands and camera angles for now
-import os
+import os, psutil
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy.coordinates import SkyCoord
 from astropy import coordinates as coord
+from astropy.visualization import time_support
 import ephem
 import healpy as hp
 import psycopg2
 import psycopg2.extras
+import subprocess
+from datetime import datetime
+import matplotlib.dates as mdates
+import time
+import matplotlib.pyplot as plt
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -631,6 +637,104 @@ def make_html_visits_plot(data, maptype):
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
 
     return fig_html
+
+#####################
+# Wrapper helper code
+#####################
+
+def set_up_db():
+    subprocess.run(["dropdb", "lsst_database"])
+    subprocess.run(["createdb", "lsst_database"])
+    subprocess.run(["psql", "-d", "lsst_database", "-f", "schema.sql"])
+    return
+
+def write(destinations, msg, at_line_start):
+    lines = msg.split("\n")
+
+    for i, line in enumerate(lines):
+        if i > 0:
+            for dest in destinations:
+                dest.write("\n")
+            at_line_start = True
+
+        if line:
+            if at_line_start:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                line = f"[{timestamp}] {line}"
+                at_line_start = False
+            for dest in destinations:
+                dest.write(line)
+                dest.flush()
+
+    return at_line_start
+
+def monitor_resources(log_path, interval=5, stop_event=None):
+    """
+    Logs CPU and memory usage to a file at regular intervals.
+    Runs until stop_event is set.
+    """
+    process = psutil.Process(os.getpid())
+
+    with open(log_path, "w") as f:
+        f.write("timestamp,cpu_percent,memory_mb\n")
+
+        while not stop_event.is_set():
+            cpu = process.cpu_percent(interval=interval)
+            mem = process.memory_info().rss / (1024 * 1024)  # bytes → MB
+            ts  = time.strftime("%Y-%m-%d %H:%M:%S")
+
+            f.write(f"{ts},{cpu:.1f},{mem:.1f}\n")
+            f.flush()
+
+def monitoring_plots(dir_files, file_time):
+
+    time_support()
+
+    data = pd.read_csv(f"{dir_files}{file_time}/resources_{file_time}.csv")
+
+    timestamp   = Time(data['timestamp'].tolist())
+    cpu_percent = np.array(data['cpu_percent'])
+    memory_mb   = np.array(data['memory_mb'])
+
+    ts_update  = read_log(dir_files, file_time, "Updated data for")
+    ts_maptype = read_log(dir_files, file_time, "Map type")
+    ts_rowpick = read_log(dir_files, file_time, "Row")
+
+    fig, ax = plt.subplots(1,1, figsize=(10,5))
+    ax.plot(timestamp, memory_mb, color='k')
+    ax.scatter(timestamp, memory_mb, color='k',s=10)
+    for i in range(0,len(ts_update)):
+        ax.plot(Time([ts_update[i], ts_update[i]]),[0,1000], 
+                linestyle='dashed', linewidth=0.5, color='grey')
+    for i in range(0,len(ts_maptype)):
+        ax.plot(Time([ts_maptype[i], ts_maptype[i]]),[0,1000], 
+                linestyle='dashed', linewidth=0.5, color='blue')
+    for i in range(0,len(ts_rowpick)):
+        ax.plot(Time([ts_rowpick[i], ts_rowpick[i]]),[0,1000], 
+                linestyle='dashed', linewidth=0.5, color='green')
+    ax2 = ax.twinx()
+    ax2.plot(timestamp, cpu_percent, color='purple')
+    ax2.scatter(timestamp, cpu_percent, color='purple',s=10)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+
+    ax.set_ylim(0,1.1*np.nanmax(memory_mb))
+    ax2.set_ylim(0,100)
+
+    plt.savefig(f"{dir_files}{file_time}/test.pdf")
+
+    return
+
+def read_log(dir_files, file_time, search_string):
+
+    ts = []
+    with open(f"{dir_files}{file_time}/log_{file_time}.txt", 'r') as file:
+        for line in file:
+            if search_string in line:
+                ts.append(line.strip().split()[0][1::]+" "+line.strip().split()[1][0:-1])
+
+    return ts
+
+
 
 
 def time_series(target, member):
