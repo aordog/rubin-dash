@@ -33,12 +33,20 @@ This diagram illustrates the workflow of the current runner script:
 
 ```mermaid
 graph TD
-    A[Start: main.py] --> B{Load Data};
-    B --> C[Call data_loader.py];
-    C --> D{Data Loaded};
-    D --> E{Preprocess Data};
-    E --> F[Call utils.py for operations];
-    F --> G{Data Processed};
-    G --> H[End: main.py];
+    A[core/initialize_tracking] --> B[BEGIN data_loop on dates]
+    B --> C[visits: utils/rsv_service]
+    C --> D[core/populate_database]
 
+    subgraph .......
+        E[display one row]
+        E --> F[TableData methods:<br/>.populate_table_cursor<br/>.make_html_table]
+        F --> G[TargetMap methods:<br/>.populate_2D_map<br/>.make_html_visits_map]
+        G --> H[TargetTimeSeries methods:<br/>.populate_times_series<br/>.make_html_visits_plot]
+        H --> K{Row clicked OR<br/>Maptype toggled?}
+        K -->|Yes| E
+    end
+
+    D --> E
+    K -->|No| I[END data_loop]
+    I --> B
 ```
