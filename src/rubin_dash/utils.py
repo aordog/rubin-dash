@@ -686,7 +686,7 @@ def monitor_resources(log_path, interval=5, stop_event=None):
             f.write(f"{ts},{cpu:.1f},{mem:.1f}\n")
             f.flush()
 
-def monitoring_plots(dir_files, file_time):
+def monitoring_plots(dir_files, file_time, ymax_mb=800):
 
     time_support()
 
@@ -701,26 +701,38 @@ def monitoring_plots(dir_files, file_time):
     ts_rowpick = read_log(dir_files, file_time, "Row")
 
     fig, ax = plt.subplots(1,1, figsize=(10,5))
-    ax.plot(timestamp, memory_mb, color='k')
-    ax.scatter(timestamp, memory_mb, color='k',s=10)
-    for i in range(0,len(ts_update)):
-        ax.plot(Time([ts_update[i], ts_update[i]]),[0,1000], 
-                linestyle='dashed', linewidth=0.5, color='grey')
-    for i in range(0,len(ts_maptype)):
-        ax.plot(Time([ts_maptype[i], ts_maptype[i]]),[0,1000], 
-                linestyle='dashed', linewidth=0.5, color='blue')
-    for i in range(0,len(ts_rowpick)):
-        ax.plot(Time([ts_rowpick[i], ts_rowpick[i]]),[0,1000], 
-                linestyle='dashed', linewidth=0.5, color='green')
+    ax.plot(timestamp, memory_mb, color='k', label='memory')
+
+    colors = ['grey', 'blue', 'green']
+    labels = ['update', 'toggle map', 'click row']
+    ts = [ts_update, ts_maptype, ts_rowpick]
+    for j in range(0,3):
+        for i in range(0,len(ts[j])):
+            if i == 0:
+                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle='dashed', 
+                    linewidth=0.5, color=colors[j], label=labels[j])
+            else:
+                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle='dashed', 
+                        linewidth=0.5, color=colors[j])
+
     ax2 = ax.twinx()
-    ax2.plot(timestamp, cpu_percent, color='purple')
-    ax2.scatter(timestamp, cpu_percent, color='purple',s=10)
+    ax2.plot(timestamp, cpu_percent, color='purple', label='CPU')
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
 
-    ax.set_ylim(0,1.1*np.nanmax(memory_mb))
-    ax2.set_ylim(0,100)
+    ax.set_ylim(0,ymax_mb)
+    ax2.set_ylim(0,130)
 
-    plt.savefig(f"{dir_files}{file_time}/test.pdf")
+    ax.set_xlim(timestamp[0],timestamp[-1])
+
+    ax.legend(framealpha=1, loc='upper left')
+    ax2.legend(framealpha=1, loc='upper right')
+
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Memory (MB)')
+    ax2.set_ylabel('CPU (%)')
+
+    plt.savefig(f"{dir_files}{file_time}/{file_time}.pdf")
+    plt.savefig(f"{dir_files}{file_time}/{file_time}.png")
 
     return
 

@@ -1,6 +1,3 @@
-#import tracemalloc
-#tracemalloc.start()
-
 import gc
 import ctypes
 from flask import Flask, jsonify, request, render_template
@@ -14,27 +11,6 @@ from datetime import datetime, timedelta
 import logging
 import sys, subprocess
 import psycopg2.extras
-
-"""
-def _print_memory_snapshot(label=""):
-    snapshot = tracemalloc.take_snapshot()
-    # Filter out importlib/tracemalloc noise
-    snapshot = snapshot.filter_traces([
-        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
-        tracemalloc.Filter(False, "<frozen importlib._bootstrap_external>"),
-        tracemalloc.Filter(False, tracemalloc.__file__),
-    ])
-    top = snapshot.statistics('lineno')
-    print(f"\n=== Top 15 memory lines {label} ===")
-    for stat in top[:15]:
-        print(stat)
-
-    print(f"\n=== Top 10 by file {label} ===")
-    top_files = snapshot.statistics('filename')
-    for stat in top_files[:10]:
-        print(stat)
-    print()
-"""
 
 # C memory fragmentation stuff:
 _libc = ctypes.CDLL("libc.so.6")
@@ -55,7 +31,6 @@ subprocess.run(["mkdir", dir_out+timestamp])
 log_file = open(f"{dir_out+timestamp}/log_{timestamp}.txt", "w")
 sys.stdout = Logger(sys.stdout, log_file)
 sys.stderr = Logger(sys.stderr, log_file)
-
 
 # Delete existing test database and make new one
 set_up_db()
@@ -135,7 +110,6 @@ def data_loop():
 
         # Force OS to reclaim freed C memory
         _reclaim()
-
 
         time.sleep(t_refresh)
 
@@ -263,5 +237,3 @@ if __name__ == "__main__":
         stop_monitor.set()
         monitor_thread.join(timeout=10)
         log_file.close()
-
-#log_file.close()
