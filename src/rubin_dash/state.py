@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 import threading
-import time
 
 class SharedState:
     """Thin, lockable wrapper around the dashboard's mutable state."""

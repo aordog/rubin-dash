@@ -58,13 +58,9 @@ class TableData:
 
     """
 
-    def __init__(self, description: str = "Table data object"):
+    def __init__(self, cur, description: str = "Table data object"):
         self.description = description
-        self.data = {}
-
-    def populate_table_cursor(self, cur):
-
-        self.data = utils.populate_table_cursor(self.data, cur)
+        self.data = utils.populate_table(cur)
 
     def make_html_table(self):
 
@@ -78,18 +74,13 @@ class TargetMap:
 
     """
 
-    def __init__(self, description: str = "2D map object"):
+    def __init__(self, gid, cur, description: str = "2D map object"):
         self.description = description
-        self.data = {}
-
-    def populate_2D_map(self, gid, cur):
-
-        self.data = utils.populate_2D_map(self.data, gid, cur)
+        self.data = utils.populate_2D_map(gid, cur)
 
     def make_html_visits_map(self, idx_mem, maptype):
 
         return utils.make_html_visits_map(self.data, idx_mem, maptype)
-
 
 class TargetTimeSeries:
     """A class for data needed to make the times series display.
@@ -99,13 +90,10 @@ class TargetTimeSeries:
 
     """
 
-    def __init__(self, description: str = "Time series object"):
+    def __init__(self, gid, idx_mem, cur, 
+                 description: str = "Time series object"):
         self.description = description
-        self.data = {}
-
-    def populate_times_series(self, gid, idx_mem, cur):
-
-        self.data = utils.populate_times_series(self.data, gid, idx_mem, cur)
+        self.data = utils.populate_times_series(gid, idx_mem, cur)
 
     def make_html_visits_plot(self, maptype):
 

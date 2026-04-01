@@ -7,7 +7,9 @@ from rubin_dash.utils import monitoring_plots
 #file_time = "2026-03-30-15-44-06" # memory fix implemented, but expensive diagnostic code in place
 #file_time = "2026-03-30-16-00-17" # completely fixed
 
-file_time = "2026-04-01-11-38-45" # refactor main runner into separate modules
+#file_time = "2026-04-01-11-38-45" # refactor main runner into separate modules
+#file_time = "2026-04-01-16-43-55" # simplify some functions
+file_time = "2026-04-01-16-51-09" # larger list (1420 sources)
 
 
 dir_files = "/home/aordog/Dropbox/candiapl/rubin-dash-out/"
