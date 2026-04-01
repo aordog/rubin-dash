@@ -6,24 +6,28 @@
 rubin-dash/
 ├── src/
 │   └── rubin_dash/
-│        ├── core.py      # main classes and functions
-│        ├── utils.py     # subroutines for main classes and functions
-│        └── __init__.py  # INCOMPLETE
+│        ├── __init__.py
+│        ├── __main__.py   # entry point
+│        ├── config.py     # tunables
+│        ├── core.py       # main classes and functions
+│        ├── utils.py      # support routines for classes and functions
+│        ├── state.py      # thread-safe shared state
+│        ├── pipeline.py   # data loop and helpers
+│        └── app.py        # Flask app factory and routes
 ├── templates/
-│    └── index.html       # overall webpage structure
+│   └── index.html        # overall webpage structure
 ├── static/
 │   ├── css/
-│   │    └── style.css    # CSS for styling webpage
+│   │    └── style.css     # CSS for styling webpage
 │   └── js/
-│        ├── main.js      # main javascript for webpage
-│        └── plot.js      # javascript for plots (NOT USED YET)
-├── docs/                 # INCOMPLETE
+│        ├── main.js       # main javascript for webpage
+│        └── plot.js       # javascript for plots (NOT USED YET)
+├── docs/                  # INCOMPLETE
 ├── tests/
-│    └── test_comet.py    # INCOMPLETE
-├── schema.sql            # schema for PostgreSQL database
-├── test_runner_v4.py     # runner to generate simulated daily updates
-├── pyproject.toml        # INCOMPLETE
-└── plot_runner.py        # runner to generate resource tracking plots
+│    └── test_comet.py     # INCOMPLETE
+├── schema.sql             # schema for PostgreSQL database
+├── pyproject.toml        
+└── plot_runner.py         # performance diagnostics plots
 ```
 ---
 
