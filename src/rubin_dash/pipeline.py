@@ -1,0 +1,122 @@
+"""
+Data-processing pipeline for rubin-dash.
+From Claude:
+This is where the data loop and the reusable "generate plots" helper live. 
+Nothing in here knows about Flask, so a future Dash / Panel / REST front-end 
+can call the same functions.
+
+Public API
+----------
+- ``generate_table``  — HTML table from the current DB state
+- ``generate_plots``  — sky-map + time-series HTML for a (group, member)
+- ``reclaim_memory``  — force Python GC + malloc_trim
+- ``data_loop``       — background driver that iterates over simulated dates
+"""
+
+from __future__ import annotations
+
+import ctypes
+import gc
+import time
+from typing import TYPE_CHECKING
+
+from rubin_dash.config import REFRESH_INTERVAL, simulation_dates
+from rubin_dash.core import (
+    populate_database,
+    TableData,
+    TargetMap,
+    TargetTimeSeries,
+)
+from rubin_dash.utils import rsv_service
+
+if TYPE_CHECKING:
+    from rubin_dash.state import SharedState
+
+# C-level memory reclamation:
+_libc = ctypes.CDLL("libc.so.6")
+def reclaim_memory() -> None:
+    """Force Python GC and return freed C memory to the OS."""
+    gc.collect()
+    _libc.malloc_trim(0)
+
+# Reusable helpers (called by the web layer too)
+def generate_table(cur) -> str:
+    """Build the HTML summary table from the current DB contents."""
+    table = TableData()
+    table.populate_table_cursor(cur)
+    return table.make_html_table()
+
+def generate_plots(cur, gn: int, mn: int, maptype: str) -> tuple[str, str]:
+    """Return ``(map_html, timeseries_html)`` for a given target.
+
+    Parameters
+    ----------
+    cur : psycopg2 cursor (DictCursor)
+    gn  : group number
+    mn  : member index inside the group
+    maptype : ``'daily'`` or ``'cumulative'``
+    """
+    target = TargetMap()
+    target.populate_2D_map(gn, cur)
+    fig1 = target.make_html_visits_map(mn, maptype)
+
+    ts = TargetTimeSeries()
+    ts.populate_times_series(gn, mn, cur)
+    fig2 = ts.make_html_visits_plot(maptype)
+
+    return fig1, fig2
+
+
+# The main data loop:
+def data_loop(
+    shared_state: SharedState,
+    conn,
+    cur,
+    camera,
+    user_id: int,
+) -> None:
+    """Iterate over simulated dates, updating the DB and shared state.
+
+    Designed to run in a daemon thread.
+    """
+    for date in simulation_dates():
+
+        # Signal "processing"
+        shared_state.write(
+            updating=True,
+            progress=0.0,
+            progress_msg=f"Processing {date}...",
+        )
+
+        visits = rsv_service(date)
+
+        if visits.empty:
+            print(f"DATA MISSING for {date}")
+        else:
+            # populate_database still expects (lock, dict)
+            populate_database(
+                conn, cur, camera, user_id, visits, date,
+                shared_state.lock, shared_state.raw,
+            )
+
+            table_html = generate_table(cur)
+            fig1_html, fig2_html = generate_plots(cur, gn=1, mn=0, maptype="daily")
+
+            # Atomically swap in the new data
+            with shared_state.lock:
+                s = shared_state.raw
+                s["date"]         = date
+                s["table"]        = table_html
+                s["fig1_html"]    = fig1_html
+                s["fig2_html"]    = fig2_html
+                s["version"]     += 1
+                s["updating"]     = False
+                s["progress"]     = 0.0
+                s["next_update"]  = time.time() + REFRESH_INTERVAL
+
+            print("============================")
+            print(f"Updated data for {date}")
+            print("============================")
+
+        reclaim_memory()
+        time.sleep(REFRESH_INTERVAL)
