@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import psycopg2.extras
 from flask import Flask, jsonify, render_template, request
-from rubin_dash.pipeline import generate_plots, reclaim_memory
+from rubin_dash.pipeline import reclaim_memory
+from rubin_dash.core import TargetMap, TargetTimeSeries
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
 
@@ -44,10 +45,11 @@ def create_app(
         """Open a short-lived cursor, generate both plots, reclaim."""
         local_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
-            fig1, fig2 = generate_plots(local_cur, gn, mn, maptype)
+            fig1_html = TargetMap(gn, local_cur).make_html_visits_map(mn, maptype)
+            fig2_html = TargetTimeSeries(gn, mn, local_cur).make_html_visits_plot(maptype)
         finally:
             local_cur.close()
-        result = jsonify({"status": "ok", "fig1_html": fig1, "fig2_html": fig2})
+        result = jsonify({"status": "ok", "fig1_html": fig1_html, "fig2_html": fig2_html})
         reclaim_memory()
         return result
 

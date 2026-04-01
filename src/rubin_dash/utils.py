@@ -391,7 +391,7 @@ def get_camera(os_env = '/home/aordog/rubin_sim_data'):
 # Table and plots
 #####################
 
-def populate_table_cursor(data, cur):
+def populate_table(cur):
 
     cur.execute(f"""
         SELECT g.name_gr, g.group_id,
@@ -408,6 +408,7 @@ def populate_table_cursor(data, cur):
         ORDER BY g.group_id, m.member_id
     """)
     rows = cur.fetchall()
+    data = {}
 
     for col in ['row_id','gr_name','ra','dec','gr_num','mem_num']:
         data[col] = []
@@ -462,7 +463,7 @@ def make_html_table(data):
     html += "</tbody>\n</table>"
     return html
 
-def populate_2D_map(data, gid, cur):
+def populate_2D_map(gid, cur):
 
     # Group-level data
     cur.execute("""
@@ -470,6 +471,8 @@ def populate_2D_map(data, gid, cur):
         FROM groups WHERE group_id = %s
     """, (gid,))
     grp = cur.fetchone()
+
+    data = {}
 
     data['ra_gr']    = grp['ra_gr']
     data['dec_gr']   = grp['dec_gr']
@@ -569,7 +572,7 @@ def make_html_visits_map(data, idx_mem, maptype):
     
     return fig_html
 
-def populate_times_series(data, gid, idx_mem, cur):
+def populate_times_series(gid, idx_mem, cur):
 
     # Daily time series data
     cols = ', '.join([f'v.{c}' for c in VISIT_COLS])
@@ -581,6 +584,8 @@ def populate_times_series(data, gid, idx_mem, cur):
            AND m.member_idx = %s
          ORDER BY v.time
     """, (gid, idx_mem))
+
+    data = {}
 
     data['daily'] = pd.DataFrame(cur.fetchall(), columns=['time'] + VISIT_COLS)
     #print(time_df)

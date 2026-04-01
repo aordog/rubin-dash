@@ -39,33 +39,6 @@ def reclaim_memory() -> None:
     gc.collect()
     _libc.malloc_trim(0)
 
-# Reusable helpers (called by the web layer too)
-def generate_table(cur) -> str:
-    """Build the HTML summary table from the current DB contents."""
-    table = TableData()
-    table.populate_table_cursor(cur)
-    return table.make_html_table()
-
-def generate_plots(cur, gn: int, mn: int, maptype: str) -> tuple[str, str]:
-    """Return ``(map_html, timeseries_html)`` for a given target.
-
-    Parameters
-    ----------
-    cur : psycopg2 cursor (DictCursor)
-    gn  : group number
-    mn  : member index inside the group
-    maptype : ``'daily'`` or ``'cumulative'``
-    """
-    target = TargetMap()
-    target.populate_2D_map(gn, cur)
-    fig1 = target.make_html_visits_map(mn, maptype)
-
-    ts = TargetTimeSeries()
-    ts.populate_times_series(gn, mn, cur)
-    fig2 = ts.make_html_visits_plot(maptype)
-
-    return fig1, fig2
-
 
 # The main data loop:
 def data_loop(
@@ -99,8 +72,9 @@ def data_loop(
                 shared_state.lock, shared_state.raw,
             )
 
-            table_html = generate_table(cur)
-            fig1_html, fig2_html = generate_plots(cur, gn=1, mn=0, maptype="daily")
+            table_html = TableData(cur).make_html_table()
+            fig1_html  = TargetMap(1, cur).make_html_visits_map(0, "daily")
+            fig2_html  = TargetTimeSeries(1, 0, cur).make_html_visits_plot("daily")
 
             # Atomically swap in the new data
             with shared_state.lock:
