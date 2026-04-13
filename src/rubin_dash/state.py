@@ -12,6 +12,7 @@ class SharedState:
             "date":         None,
             "fig1_html":    "",
             "fig2_html":    "",
+            "fig3_html":    "",
             "table":        None,
             "version":      0,
             "updating":     False,

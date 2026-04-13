@@ -8,6 +8,7 @@ DEFAULT_USER_ID: int  = 1  # User ID: revisit this when adding users
 REFRESH_INTERVAL: int = 30 # refresh rate for simulated iterations
 SIM_START = datetime(2025, 8, 20)  # simulated days start
 SIM_END   = datetime(2025, 11, 30) # simulated days end
+VERBOSE = False  # Show debug columns in table (row_id, gr_name, gr_num, mem_num)
 
 QUERY_FILE     = "small_query.txt" # File with user-selected targets
 INITIAL_OFFSET = 0.0               # declination limit to filter targets

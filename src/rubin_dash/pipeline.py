@@ -26,6 +26,7 @@ from rubin_dash.core import (
     TableData,
     TargetMap,
     TargetTimeSeries,
+    ObservabilityData,
 )
 from rubin_dash.utils import rsv_service
 
@@ -75,6 +76,7 @@ def data_loop(
             table_html = TableData(cur).make_html_table()
             fig1_html  = TargetMap(1, cur).make_html_visits_map(0, "daily")
             fig2_html  = TargetTimeSeries(1, 0, cur).make_html_visits_plot("daily")
+            fig3_html  = ObservabilityData(1, 0, cur, date).make_html_obs_plot()
 
             # Atomically swap in the new data
             with shared_state.lock:
@@ -83,6 +85,7 @@ def data_loop(
                 s["table"]        = table_html
                 s["fig1_html"]    = fig1_html
                 s["fig2_html"]    = fig2_html
+                s["fig3_html"]    = fig3_html
                 s["version"]     += 1
                 s["updating"]     = False
                 s["progress"]     = 0.0

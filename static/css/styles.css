@@ -1,3 +1,14 @@
+:root {
+  --c-background: #87BAC3;
+  --c-headers   : #473472;
+  --c-tablebrdr : #53629E;
+  --c-tabletext : black;
+  --c-hover     : #D6F4ED;
+  --c-highlights: #87BAC3;
+  --c-plots     : white;
+  --c-outlines  : black;
+}
+
 /* ---------- Header ---------- */
 h1 {
     font-size: 40px;
@@ -6,7 +17,7 @@ h1 {
     left: 0;
     width: 100%;
     text-align: center;
-    background-color: lavender;
+    background-color: var(--c-background);
     z-index: 20;
     margin: 0;
     padding: 10px 0;
@@ -22,8 +33,8 @@ h1 {
 
 /* ---------- General formatting ---------- */
 body {
-    background: lavender;
-    color: darkblue;
+    background: var(--c-background);
+    color: var(--c-headers);
     font-family: Arial, sans-serif;
     margin: 15px;
 }
@@ -54,9 +65,9 @@ h2 {
 .figure-container {
     padding: 10px;
     margin: 5px;
-    border: 1px solid black;
+    border: 1px solid var(--c-outlines);
     border-radius: 5px;
-    background-color: white;
+    background-color: var(--c-plots);
 }
 
 /* ---------- Summary table ---------- */
@@ -64,7 +75,7 @@ h2 {
     border-collapse: collapse;
     margin: 5px auto;
     font-size: 10px;
-    border: 1px solid black;
+    border: 1px solid var(--c-outlines);
     table-layout: fixed;           
 }
 /* ---------- Column widths ---------- */
@@ -81,52 +92,59 @@ h2 {
 .data-table td:nth-child(n+5):nth-child(-n+10) { width: 20px; }
 
 .data-table th {
-    background-color: lavender;
-    color: darkblue;
+    background-color: var(--c-tablebrdr);
+    color: var(--c-tabletext);
     padding: 10px 10px;
     text-align: center;
-    border: 1px solid black;
+    border: 1px solid var(--c-outlines);
 }
 .data-table td {
     padding: 10px 10px;
-    border: 1px solid black;
+    border: 1px solid var(--c-outlines);
     text-align: center;
 }
 .data-table td:first-child {
-    background-color: lavender;
-    color: darkblue;
+    background-color: var(--c-tablebrdr);
+    color: var(--c-tabletext);
     font-weight: bold;
 }
 .data-table tr.clickable:hover {
-    background-color: lightcyan;
+    background-color: var(--c-hover);
     cursor: pointer;
 }
 .data-table tr.selected td {
-    background-color: rgb(180, 255, 180);
+    background-color: var(--c-highlights);
 }
 .data-table tr.selected td:first-child {
-    background-color: rgb(50, 189, 110);  
+    background-color: var(--c-tablebrdr);  
 }
 #table-container {
     position: sticky;
     top: 0;
     z-index: 100;
-    background: white;
-    max-height: 380px;        /* adjust to whatever you want */
-    overflow-y: auto;         /* scrollbar only when needed */
+    background: var(--c-plots);
+    max-height: 360px;        /* overall cap stays the same */
+    display: flex;             /* ← NEW: stack h2 + scroll area vertically */
+    flex-direction: column;    /* ← NEW */
+}
+/* NEW — only this region scrolls */
+.table-scroll-area {
+    flex: 1 1 auto;
+    min-height: 0;             /* lets the flex child shrink below its content */
+    overflow-y: auto;
 }
 .data-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
-    background-color: lavender;  /* re-state so it doesn't go transparent */
+    background-color: var(--c-tablebrdr);  /* re-state so it doesn't go transparent */
 }
 
 /* ---------- Countdown to next refresh ---------- */
 #countdown-display {
     text-align: center;
     font-size: 14px;
-    color: darkblue;
+    color: var(--c-headers);
     padding: 8px 0;
 }
 #countdown-value {
@@ -135,7 +153,7 @@ h2 {
 }
 
 .progress-track {
-    background: #e0e0e0;
+    background: var(--c-hover);
     border-radius: 8px;
     height: 18px;
     width: 100%;
@@ -149,7 +167,7 @@ h2 {
     width: 0%;
     border-radius: 8px;
     transition: width 0.5s ease;
-    background: #4CAF50;
+    background: var(--c-tablebrdr);
 }
 
 /* ---------- Map-type toggle buttons ---------- */
@@ -162,17 +180,17 @@ h2 {
     padding: 10px 20px;
     font-size: 14px;
     font-weight: bold;
-    border: 2px solid darkblue;
+    border: 2px solid var(--c-headers);
     border-radius: 6px;
-    background-color: white;
-    color: darkblue;
+    background-color:  var(--c-plots);
+    color: var(--c-headers);
     cursor: pointer;
     margin: 0 4px;
 }
 .maptype-btn:hover {
-    background-color: lightcyan;
+    background-color: var(--c-hover);
 }
 .maptype-btn.active {
-    background-color: darkblue;
-    color: white;
+    background-color: var(--c-headers);
+    color:  var(--c-plots);
 }

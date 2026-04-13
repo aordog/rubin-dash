@@ -95,7 +95,6 @@ function updateCountdown() {
         track.style.display  = 'block';
         el.textContent       = progressMsg || 'Processing...';
         fill.style.width     = Math.round(progress * 100) + '%';
-        fill.style.background = '#2196F3';
     } else {
         track.style.display  = 'none';
         if (remaining > 0) {

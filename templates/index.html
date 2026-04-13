@@ -20,7 +20,9 @@
                 <!-- Cumulative visits summary table -->
                 <div class="figure-container" id="table-container">
                     <h2>Cumulative Visits Summary</h2>
-                    {{table_html | safe}}
+                    <div class="table-scroll-area">
+                        {{table_html | safe}}
+                    </div>
                 </div>
                 <!-- Daily vs Cumulative toggle -->
                 <div id="maptype-buttons">

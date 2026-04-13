@@ -99,7 +99,22 @@ class TargetTimeSeries:
 
         return utils.make_html_visits_plot(self.data, maptype)
 
+class ObservabilityData:
+    """A class for data needed to make the future observability plot.
 
+    Parameters
+    ----------
+
+    """
+
+    def __init__(self, gid, idx_mem, cur, date, 
+                 description: str = "Observability data object"):
+        self.description = description
+        self.data = utils.populate_observability(gid, idx_mem, cur, date)
+
+    def make_html_obs_plot(self):
+
+        return utils.make_html_obs_plot(self.data)
 
 def initialize_tracking(user_id, file_in, declim):
 
