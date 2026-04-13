@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import psycopg2.extras
 from flask import Flask, jsonify, render_template, request
 from rubin_dash.pipeline import reclaim_memory
-from rubin_dash.core import TargetMap, TargetTimeSeries
+from rubin_dash.core import TargetMap, TargetTimeSeries, ObservabilityData
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
 
@@ -41,15 +41,18 @@ def create_app(
     app = Flask(__name__, **kwargs)
 
     # helpers local to the app:
-    def _render_plots(gn: int, mn: int, maptype: str):
+    def _render_plots(gn: int, mn: int, maptype: str, date):
         """Open a short-lived cursor, generate both plots, reclaim."""
         local_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
             fig1_html = TargetMap(gn, local_cur).make_html_visits_map(mn, maptype)
             fig2_html = TargetTimeSeries(gn, mn, local_cur).make_html_visits_plot(maptype)
+            fig3_html = ObservabilityData(gn, mn, local_cur, date).make_html_obs_plot()
         finally:
             local_cur.close()
-        result = jsonify({"status": "ok", "fig1_html": fig1_html, "fig2_html": fig2_html})
+        result = jsonify({"status": "ok", "fig1_html": fig1_html, 
+                                          "fig2_html": fig2_html, 
+                                          "fig3_html": fig3_html})
         reclaim_memory()
         return result
 
@@ -67,6 +70,7 @@ def create_app(
             date=snap["date"],
             fig1_html=snap["fig1_html"],
             fig2_html=snap["fig2_html"],
+            fig3_html=snap["fig3_html"],
             table_html=snap["table"],
             version=snap["version"],
             countdown_seconds=max(0, snap["next_update"] - time.time()),
@@ -78,11 +82,12 @@ def create_app(
         gn      = int(data["gn"])
         mn      = int(data["mn"])
         maptype = data.get("maptype", "daily")
+        date    = shared_state.snapshot()["date"]
         print(
             f"Row {data['index']} clicked "
             f"(maptype={maptype}, group:{gn}, member:{mn})"
         )
-        return _render_plots(gn, mn, maptype)
+        return _render_plots(gn, mn, maptype, date)
 
     @app.route("/maptype_clicked", methods=["POST"])
     def maptype_clicked():
@@ -90,11 +95,12 @@ def create_app(
         gn      = int(data["gn"])
         mn      = int(data["mn"])
         maptype = data["maptype"]
+        date    = shared_state.snapshot()["date"]
         print(
             f"Map type {maptype} clicked "
             f"(row={data.get('index', 0)}, group:{gn}, member:{mn})"
         )
-        return _render_plots(gn, mn, maptype)
+        return _render_plots(gn, mn, maptype, date)
 
     @app.route("/check_update")
     def check_update():

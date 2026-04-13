@@ -29,6 +29,7 @@ from datetime import datetime
 import matplotlib.dates as mdates
 import time
 import matplotlib.pyplot as plt
+from rubin_dash.config import VERBOSE
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -243,7 +244,6 @@ def process_group(gid, date, visits, camera, conn):
         daily_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, latest)
         
         # Save daily and total visits
-        #_upsert_member_totals(cur, mem['member_id'], total_v)
         _insert_member_totals(cur, date, mem['member_id'], total_v)
         _insert_daily_visits(cur, date, mem['member_id'], daily_v)
 
@@ -322,18 +322,6 @@ def _upsert_masks(cur, gid, mask_type, masks):
             {sets}
     """, (gid, mask_type,
           *[psycopg2.Binary(masks[col].astype(np.int16).tobytes()) for col in MASK_COLS]))
-
-def _upsert_member_totals(cur, member_id, v):
-    cols = ', '.join(VISIT_COLS)
-    phs  = ', '.join(['%s'] * len(VISIT_COLS))
-    sets = ', '.join(f"{c} = EXCLUDED.{c}" for c in VISIT_COLS)
-
-    cur.execute(f"""
-        INSERT INTO member_totals (member_id, {cols})
-        VALUES (%s, {phs})
-        ON CONFLICT (member_id) DO UPDATE SET
-            {sets}
-    """, (member_id, *[v[b] for b in VISIT_COLS]))
 
 def _insert_daily_visits(cur, date, member_id, v):
     cols = ', '.join(VISIT_COLS)
@@ -440,6 +428,11 @@ def make_html_table(data):
     df = pd.DataFrame(data, index=data['row_id'])
     df.index.name = "ID"
 
+    # Define debug columns that should only be shown if VERBOSE is True
+    debug_cols = ['row_id', 'gr_name', 'gr_num', 'mem_num']
+    if not VERBOSE:
+        df = df.drop(columns=debug_cols, errors='ignore')
+
     html = '<table class="data-table">\n<thead>\n<tr>'
 
     # Index header first, then column headers
@@ -452,8 +445,8 @@ def make_html_table(data):
     for idx, row in df.iterrows():
         html += (
             f'<tr data-id="{idx}"'
-            f' data-gn="{row["gr_num"]}"'
-            f' data-mn="{row["mem_num"]}">'
+            f' data-gn="{data["gr_num"][list(data["row_id"]).index(idx)]}"'
+            f' data-mn="{data["mem_num"][list(data["row_id"]).index(idx)]}">'
         )
         html += f"<td>{idx}</td>"          # ID cell
         for col in df.columns:
@@ -566,7 +559,7 @@ def make_html_visits_map(data, idx_mem, maptype):
                     showgrid=False, zeroline=False)
     fig.update_xaxes(title_text="RA (deg.)", row=2)
     fig.update_yaxes(title_text="Dec (deg.)", col=1)
-    fig.update_layout(height=500, width=700, showlegend=True)
+    fig.update_layout(height=500, width=700, showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
 
     fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False, div_id='figure1')
     
@@ -636,10 +629,158 @@ def make_html_visits_plot(data, maptype):
 
     fig.update_xaxes(title_text="Date", row=1)
     fig.update_yaxes(title_text="Number of visits", col=1)
-    fig.update_layout(height=400, width=700, showlegend=True)
+    fig.update_layout(height=400, width=700, showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
 
     # For the second figure, we don't need to include plotly.js again
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
+
+    return fig_html
+
+def populate_observability(gid, idx_mem, cur, date):
+
+    data = {}
+
+    # Extract the RA and dec from group and member indices:
+    cur.execute(f"""
+        SELECT ra_mem, dec_mem FROM members 
+        WHERE group_id = %s AND member_idx =%s
+        """, (gid,idx_mem))
+    coords = cur.fetchone()
+    RA_t  = coords[0]
+    dec_t = coords[1]
+
+    ##### Constants - eventually convert to inputs ####
+    Ndays  =  30.0 # days
+    dt =  5.0/60. # hours
+
+    # Get location of LSST and start date for plot:
+    loc = EarthLocation.of_site('LSST')
+    start_date = Time(date).iso
+
+    ##### 1) Data for tracking the target #####
+
+    # Set up time array:
+    dmjd_arr = np.arange(0, Ndays+dt/24., dt/24.)
+    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
+
+    # Get alt/az coords of target vs time:
+    c = SkyCoord(RA_t, dec_t, frame='icrs', unit='deg')
+    aa_frame = coord.AltAz(obstime = t_utc, location = loc)
+    c_altaz  = c.transform_to(aa_frame)
+    az = c_altaz.az.deg.copy()
+    az[az > 180.] = az[az > 180.] - 360.
+
+    data['loc'] = loc
+    data['az']  = az
+    data['el']  = c_altaz.alt.deg
+    data['utc'] = t_utc
+    data['ra']  = RA_t
+    data['dec'] = dec_t
+
+    ##### 2) Data for tracking sunrise/sunset #####
+    
+    # Set up array of days (expand 1 day beyond plotted range):
+    days_mjd = np.arange(0, Ndays+1.0, 1.0)
+    days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
+
+    # Set up observer object and populate:
+    obs = ephem.Observer()
+    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be in string format
+    obs.lat  = str(loc.geodetic.lat.deg) #Note that lat should be in string format
+    obs.elev = loc.geodetic.height.value
+
+    # Loop through days to get sunrise and sunset times:
+    data['sunrise'] = []
+    data['sunset']  = []
+    data['hours']   = []
+    data['days_utc'] = days_utc[0:-2]
+    for i in range(0,len(days_utc)-2):
+
+        obs.date = str(days_utc[i])
+        sunset = obs.next_setting(ephem.Sun()).datetime()
+        data['sunset'].append(sunset)
+
+        obs.date = str(days_utc[i+1])
+        sunrise = obs.next_rising(ephem.Sun()).datetime()
+        data['sunrise'].append(sunrise)
+
+        idx_count = np.where((Time(t_utc).mjd>Time(sunset).mjd) & 
+                             (Time(t_utc).mjd<Time(sunrise).mjd) & 
+                             (data['el']>15))[0]
+        
+        data['hours'].append((Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.)
+
+    return data
+
+def make_html_obs_plot(data):
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        specs=[[{"type": "scatter"}]]*2
+    )
+
+
+    fig.add_trace(
+        go.Scatter(
+            x=data['utc'].iso,
+            y=data['el'],
+            mode='lines+markers',
+            name = 'elevation',
+            marker=dict(
+                size=2,
+                color='red',
+                symbol='circle'
+            )
+        ),
+        row=2, col=1
+    )
+    fig.add_hrect(
+        y0=-90, y1=15,           # horizontal lines to shade between
+        fillcolor="gray", 
+        opacity=0.8,
+        layer="above",
+        line_width=0,
+        row=2, col=1
+    )
+    fig.add_hrect(
+        y0=86.5, y1=90,           # horizontal lines to shade between
+        fillcolor="gray", 
+        opacity=0.8,
+        layer="above",
+        line_width=0,
+        row=2, col=1
+    )
+    for i in range(0,len(data['sunrise'])):
+        fig.add_vrect(
+            x0=Time(data['sunrise'][i]).iso, 
+            x1=Time(data['sunset'][i]).iso,          
+            fillcolor="gray", 
+            opacity=0.8,
+            layer="above",
+            line_width=0,
+            row=2, col=1
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=data['days_utc'].iso,
+            y=data['hours'],
+            mode='lines+markers',
+            name = 'elevation',
+            marker=dict(
+                size=2,
+                color='red',
+                symbol='circle'
+            )
+        ),
+        row=1, col=1
+    )
+
+    fig.update_xaxes(title_text="Date (UTC)", range=[data['utc'].iso[0], data['utc'].iso[-1]])
+    fig.update_yaxes(title_text="Hours observable", range=[0, 12], row=1, col=1)
+    fig.update_yaxes(title_text="Elevation (deg.)", range=[-90, 90], row=2, col=1)
+    fig.update_layout(height=400, width=700, showlegend=False, margin=dict(l=60, r=40, t=50, b=50)) 
+
+    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
 
     return fig_html
 
@@ -830,94 +971,3 @@ def visits_plots(target, member, maptype):
 
     return fig_html
 
-def make_long_forecast_plot(date, RA_t, dec_t):
-
-    loc = EarthLocation.of_site('LSST')
-    start_date = Time(date).iso
-    t  =  30.0 # days
-    dt =  1.0 # hours
-    dmjd_arr = np.arange(0, t+dt/24., dt/24.)
-    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
-
-    c = SkyCoord(RA_t, dec_t, frame='icrs', unit='deg')
-    aa_frame = coord.AltAz(obstime = t_utc, location = loc)
-    c_altaz  = c.transform_to(aa_frame)
-
-    az = c_altaz.az.deg.copy()
-    az[az > 180.] = az[az > 180.] - 360.
-
-    fig = make_subplots(
-        rows=1, cols=1,
-        specs=[[{"type": "scatter"}]]
-    )
-
-
-    fig.add_trace(
-        go.Scatter(
-            x=t_utc.mjd,
-            y=c_altaz.alt.deg,
-            mode='lines+markers',
-            name = 'elevation',
-            marker=dict(
-                size=2,
-                color='red',
-                symbol='circle'
-            )
-        ),
-        row=1, col=1
-    )
-
-    fig.add_hrect(
-        y0=-90, y1=15,           # horizontal lines to shade between
-        fillcolor="gray", 
-        opacity=0.8,
-        layer="above",
-        line_width=0,
-        row=1, col=1
-    )
-
-    fig.add_hrect(
-        y0=86.5, y1=90,           # horizontal lines to shade between
-        fillcolor="gray", 
-        opacity=0.8,
-        layer="above",
-        line_width=0,
-        row=1, col=1
-    )
-
-
-    #t  =  5.0 # days
-    dt =  1.0 # hours
-    days_mjd = np.arange(0, t+1.0, 1.0)
-    days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
-    obs = ephem.Observer()
-    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be in string format
-    obs.lat  = str(loc.geodetic.lat.deg)      #Note that lat should be in string format
-    obs.elev = loc.geodetic.height.value
-
-    for day in days_utc:
- 
-        obs.date = str(day)
-        sunrise = obs.next_rising(ephem.Sun()).datetime()
-        sunset  = obs.next_setting(ephem.Sun()).datetime()
-        #print(sunrise, sunset)
-
-        fig.add_vrect(
-            x0=Time(sunrise).mjd, x1=Time(sunset).mjd,          
-            fillcolor="gray", 
-            opacity=0.8,
-            layer="above",
-            line_width=0,
-            row=1, col=1
-        )
-
-    fig.update_xaxes(title_text="MJD", row=1)
-    fig.update_yaxes(title_text="Elevation (deg.)", row=1)
-    fig.update_layout(height=300, width=700, showlegend=True)
-    fig.update_yaxes(range=[-90, 90],row=1, col=1) 
-    fig.update_xaxes(range=[t_utc.mjd[0], t_utc.mjd[-1]], row=1, col=1) 
-
-    # For the second figure, we don't need to include plotly.js again
-    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
-
-    return fig_html
