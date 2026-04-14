@@ -450,7 +450,10 @@ def make_html_table(data):
         )
         html += f"<td>{idx}</td>"          # ID cell
         for col in df.columns:
-            html += f"<td>{row[col]}</td>"
+            if col in BANDS:
+                html += f"<td>{int(row[col])}</td>"
+            else:
+                html += f"<td>{row[col]}</td>"
         html += "</tr>\n"
 
     html += "</tbody>\n</table>"
@@ -752,8 +755,8 @@ def make_html_obs_plot(data):
     )
     for i in range(0,len(data['sunrise'])):
         fig.add_vrect(
-            x0=Time(data['sunrise'][i]).iso, 
-            x1=Time(data['sunset'][i]).iso,          
+            x0=Time(data['sunset'][i]).iso, 
+            x1=Time(data['sunrise'][i]).iso,          
             fillcolor="gray", 
             opacity=0.8,
             layer="above",
