@@ -41,21 +41,21 @@
             <!-- Right column: scrollable plots -->
             <div class="right-column">
                 <!-- 2D visits maps -->
-                <div class="figure-container" id="fig1-container">
+                <div class="figure-container" id="fig1-container" style="aspect-ratio: 5/4">
                     <h2 id="fig1-heading">Daily visits</h2>
                     <div id="fig1-content">
                         {{ fig1_html | safe }}
                     </div>
                 </div>
                 <!-- Time series progress plot -->
-                <div class="figure-container" id="fig2-container">
+                <div class="figure-container" id="fig2-container" style="aspect-ratio: 5/4">
                     <h2>Progress at target</h2>
                     <div id="fig2-content">
                         {{ fig2_html | safe }}
                     </div>
                 </div>
                 <!-- Future observability plot -->
-                <div class="figure-container">
+                <div class="figure-container" id="fig3-container" style="aspect-ratio: 5/4">
                     <h2>Future observability of target</h2>
                     <div id="fig3-content">
                         {{ fig3_html | safe }}

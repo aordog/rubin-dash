@@ -164,3 +164,44 @@ function sendMapType(maptype) {
     })
     .catch(error => console.error('Error:', error));
 }
+
+// ---- Table sorting (vanilla JS, no jQuery) ----
+document.querySelectorAll('.sortable-table thead th').forEach((header, index) => {
+    header.style.cursor = 'pointer';
+    header.addEventListener('click', () => {
+        const table = header.closest('table');
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        // Determine sort direction (ascending or descending)
+        const isAscending = header.classList.contains('sort-asc');
+        
+        // Remove sort classes from all headers
+        table.querySelectorAll('thead th').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+        });
+        
+        // Sort rows
+        rows.sort((a, b) => {
+            const aCell = a.children[index].textContent.trim();
+            const bCell = b.children[index].textContent.trim();
+            
+            // Try numeric sort first
+            const aNum = parseFloat(aCell);
+            const bNum = parseFloat(bCell);
+            
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return isAscending ? bNum - aNum : aNum - bNum;
+            }
+            
+            // Fall back to alphabetic sort
+            return isAscending ? bCell.localeCompare(aCell) : aCell.localeCompare(bCell);
+        });
+        
+        // Re-render rows
+        rows.forEach(row => tbody.appendChild(row));
+        
+        // Add sort indicator to current header
+        header.classList.add(isAscending ? 'sort-desc' : 'sort-asc');
+    });
+});
