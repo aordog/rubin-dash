@@ -47,20 +47,25 @@ h2 {
     display: flex;
     gap: 5px;
     align-items: flex-start;
-    margin-top: 100px;          
+    margin-top: 100px;
+    width: 100%;
+    box-sizing: border-box;
 }
 .left-column {
-    position: fixed;
-    top: 100px;                 
-    left: 20px;
-    width: 520px;
-    max-height: calc(100vh - 90px);  
+    position: sticky;              /* was: fixed */
+    top: 100px;
+    /* REMOVED: left: 15px          — flex handles placement now */
+    /* REMOVED: width: calc(...)    — use flex instead */
+    flex: 0 0 40%;                 /* don't grow, don't shrink, 40% wide */
+    align-self: flex-start;        /* ← critical for sticky inside flex */
+    max-height: calc(100vh - 120px);
     overflow-y: auto;
 }
 .right-column {
-    flex: 1;
+    /* REMOVED: margin-left: calc(...)  — no longer needed */
+    /* REMOVED: width: calc(...)        — flex handles it */
+    flex: 1;                       /* takes all remaining space */
     min-width: 0;
-    margin-left: 525px;       
 }
 .figure-container {
     padding: 10px;
@@ -70,13 +75,33 @@ h2 {
     background-color: var(--c-plots);
 }
 
+/* The wrapper drives the size; Plotly fills it */
+.plot-wrapper {
+    width: 100%;
+    /* aspect-ratio is set inline from Python, e.g. style="aspect-ratio: 16/9;" */
+}
+
+/* Force Plotly's generated div to fill the wrapper */
+.plot-wrapper .plotly-graph-div {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Also force the inner <svg> / <canvas> layer */
+.plot-wrapper .js-plotly-plot,
+.plot-wrapper .plot-container {
+    width: 100% !important;
+    height: 100% !important;
+}
+
 /* ---------- Summary table ---------- */
 .data-table {
     border-collapse: collapse;
     margin: 5px auto;
     font-size: 10px;
     border: 1px solid var(--c-outlines);
-    table-layout: fixed;           
+    table-layout: fixed;
+    min-width: 480px;           
 }
 /* ---------- Column widths ---------- */
 .data-table th:nth-child(1),
@@ -96,7 +121,8 @@ h2 {
     color: var(--c-tabletext);
     padding: 10px 10px;
     text-align: center;
-    border: 1px solid var(--c-outlines);
+    border-left: 1px solid var(--c-outlines);
+    border-right: 1px solid var(--c-outlines);
 }
 .data-table td {
     padding: 10px 10px;
@@ -132,12 +158,14 @@ h2 {
     flex: 1 1 auto;
     min-height: 0;             /* lets the flex child shrink below its content */
     overflow-y: auto;
+    overflow-x: auto;
 }
 .data-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
     background-color: var(--c-tablebrdr);  /* re-state so it doesn't go transparent */
+    border-bottom: 1px solid var(--c-outlines);
 }
 
 /* ---------- Countdown to next refresh ---------- */
@@ -193,4 +221,37 @@ h2 {
 .maptype-btn.active {
     background-color: var(--c-headers);
     color:  var(--c-plots);
+}
+
+.sortable-table thead th {
+    user-select: none;
+}
+
+.sortable-table thead th.sort-asc::after {
+    content: ' ▲';
+    font-size: 0.8em;
+}
+
+.sortable-table thead th.sort-desc::after {
+    content: ' ▼';
+    font-size: 0.8em;
+}
+
+/* ---------- Responsive layout ---------- */
+@media (max-width: 600px) {
+    .main-layout {
+        flex-direction: column;
+    }
+
+    .left-column {
+        position: static;
+        flex: 0 0 auto;
+        width: 100%;
+        max-height: none;
+        overflow-y: visible;
+    }
+
+    .right-column {
+        width: 100%;
+    }
 }

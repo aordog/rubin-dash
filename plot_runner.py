@@ -11,7 +11,8 @@ from rubin_dash.utils import monitoring_plots
 #file_time = "2026-04-01-16-43-55" # simplify some functions
 #file_time = "2026-04-01-16-51-09" # larger list (1420 sources)
 #file_time = "2026-04-13-15-24-30"  # just checking after some major changes...
-file_time = "2026-04-15-12-53-59"  # checking with new observability plots
+#file_time = "2026-04-15-12-53-59"  # checking with new observability plots
+file_time = "2026-04-15-19-21-40" # changes to tables and plot have made clicking slow...
 
 
 dir_files = "/home/aordog/Dropbox/candiapl/rubin-dash-out/"

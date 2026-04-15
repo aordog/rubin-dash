@@ -433,7 +433,7 @@ def make_html_table(data):
     if not VERBOSE:
         df = df.drop(columns=debug_cols, errors='ignore')
 
-    html = '<table class="data-table">\n<thead>\n<tr>'
+    html = '<table class="data-table sortable-table">\n<thead>\n<tr>'
 
     # Index header first, then column headers
     html += f"<th>{df.index.name}</th>"
@@ -562,9 +562,12 @@ def make_html_visits_map(data, idx_mem, maptype):
                     showgrid=False, zeroline=False)
     fig.update_xaxes(title_text="RA (deg.)", row=2)
     fig.update_yaxes(title_text="Dec (deg.)", col=1)
-    fig.update_layout(height=500, width=700, showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
+    fig.update_layout(showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
 
-    fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False, div_id='figure1')
+    fig.update_layout(autosize=True, width=None, height=None)
+
+    fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False, div_id='figure1',
+                           config={'responsive': True})
     
     return fig_html
 
@@ -632,10 +635,12 @@ def make_html_visits_plot(data, maptype):
 
     fig.update_xaxes(title_text="Date", row=1)
     fig.update_yaxes(title_text="Number of visits", col=1)
-    fig.update_layout(height=400, width=700, showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
+    fig.update_layout(showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
 
-    # For the second figure, we don't need to include plotly.js again
-    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
+    fig.update_layout(autosize=True, width=None, height=None)
+
+    fig_html = fig.to_html(full_html=False, div_id='figure2',
+                           config={'responsive': True})
 
     return fig_html
 
@@ -818,9 +823,11 @@ def make_html_obs_plot(data):
         ticktext=['-90°', '-45°', '0°', '45°', '90°'],
         row=2, col=1
     )
-    fig.update_layout(height=400, width=700, showlegend=False, margin=dict(l=60, r=40, t=50, b=50)) 
+    fig.update_layout(showlegend=False, margin=dict(l=60, r=40, t=50, b=50)) 
+    fig.update_layout(autosize=True, width=None, height=None)
 
-    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
+    fig_html = fig.to_html(full_html=False, div_id='figure3',
+                           config={'responsive': True})
 
     return fig_html
 
