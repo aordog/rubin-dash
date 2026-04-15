@@ -663,7 +663,7 @@ def populate_observability(gid, idx_mem, cur, date):
     ##### 1) Data for tracking the target #####
 
     # Set up time array:
-    dmjd_arr = np.arange(0, Ndays+dt/24., dt/24.)
+    dmjd_arr = np.arange(0, Ndays+1+dt/24., dt/24.)
     t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
 
     # Get alt/az coords of target vs time:
@@ -682,35 +682,38 @@ def populate_observability(gid, idx_mem, cur, date):
 
     ##### 2) Data for tracking sunrise/sunset #####
     
-    # Set up array of days (expand 1 day beyond plotted range):
-    days_mjd = np.arange(0, Ndays+1.0, 1.0)
+    # Set up array of days (expand 1 day beyond range in both directions):
+    days_mjd = np.arange(-1.0, Ndays+1.0, 1.0)
     days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
 
     # Set up observer object and populate:
     obs = ephem.Observer()
-    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be in string format
-    obs.lat  = str(loc.geodetic.lat.deg) #Note that lat should be in string format
+    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be string
+    obs.lat  = str(loc.geodetic.lat.deg) #Note that lat should be string
     obs.elev = loc.geodetic.height.value
 
     # Loop through days to get sunrise and sunset times:
     data['sunrise'] = []
     data['sunset']  = []
     data['hours']   = []
-    data['days_utc'] = days_utc[0:-2]
-    for i in range(0,len(days_utc)-2):
+    data['days_utc'] = days_utc[1:-1]
+
+    # Loop to record sunrises and sunsets:
+    for i in range(0,len(days_utc)):
+
+        obs.date = str(days_utc[i])
+        sunrise = obs.next_rising(ephem.Sun()).datetime()
+        data['sunrise'].append(sunrise)
 
         obs.date = str(days_utc[i])
         sunset = obs.next_setting(ephem.Sun()).datetime()
         data['sunset'].append(sunset)
 
-        obs.date = str(days_utc[i+1])
-        sunrise = obs.next_rising(ephem.Sun()).datetime()
-        data['sunrise'].append(sunrise)
-
-        idx_count = np.where((Time(t_utc).mjd>Time(sunset).mjd) & 
-                             (Time(t_utc).mjd<Time(sunrise).mjd) & 
+    # Loop to count hours of night-time:
+    for i in range(1,len(days_utc)-1):
+        idx_count = np.where((Time(t_utc).mjd>Time(data['sunset'][i]).mjd) & 
+                             (Time(t_utc).mjd<Time(data['sunrise'][i+1]).mjd) & 
                              (data['el']>15))[0]
-        
         data['hours'].append((Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.)
 
     return data
@@ -727,20 +730,24 @@ def make_html_obs_plot(data):
         go.Scatter(
             x=data['utc'].iso,
             y=data['el'],
-            mode='lines+markers',
+            mode='lines',
             name = 'elevation',
-            marker=dict(
-                size=2,
-                color='red',
-                symbol='circle'
-            )
+            line=dict(width=1.5, color='yellow')
         ),
         row=2, col=1
     )
     fig.add_hrect(
-        y0=-90, y1=15,           # horizontal lines to shade between
+        y0=-90, y1=0,           # horizontal lines to shade between
+        fillcolor="darkolivegreen", 
+        opacity=0.7,
+        layer="above",
+        line_width=0,
+        row=2, col=1
+    )
+    fig.add_hrect(
+        y0=0, y1=15,           # horizontal lines to shade between
         fillcolor="gray", 
-        opacity=0.8,
+        opacity=0.7,
         layer="above",
         line_width=0,
         row=2, col=1
@@ -748,39 +755,69 @@ def make_html_obs_plot(data):
     fig.add_hrect(
         y0=86.5, y1=90,           # horizontal lines to shade between
         fillcolor="gray", 
-        opacity=0.8,
+        opacity=0.7,
         layer="above",
         line_width=0,
         row=2, col=1
     )
     for i in range(0,len(data['sunrise'])):
-        fig.add_vrect(
-            x0=Time(data['sunset'][i]).iso, 
-            x1=Time(data['sunrise'][i]).iso,          
-            fillcolor="gray", 
-            opacity=0.8,
-            layer="above",
+        fig.add_shape(
+            type="rect",
+            x0=Time(data['sunrise'][i]).iso, 
+            x1=Time(data['sunset'][i]).iso,
+            y0=15,
+            y1=86.5,
+            fillcolor="deepskyblue",
+            opacity=0.6,
             line_width=0,
-            row=2, col=1
+            layer="above",
+            xref="x2",
+            yref="y2"
+        )
+    for i in range(0,len(data['sunrise'])-1):
+        fig.add_shape(
+            type="rect",
+            x0=Time(data['sunset'][i]).iso, 
+            x1=Time(data['sunrise'][i+1]).iso,
+            y0=15,
+            y1=86.5,
+            fillcolor="black",
+            line_width=0,
+            layer="below",
+            xref="x2",
+            yref="y2"
         )
     fig.add_trace(
         go.Scatter(
             x=data['days_utc'].iso,
             y=data['hours'],
-            mode='lines+markers',
+            mode='lines',
             name = 'elevation',
-            marker=dict(
-                size=2,
-                color='red',
-                symbol='circle'
-            )
+            line=dict(width=2, color='black')
         ),
         row=1, col=1
     )
 
-    fig.update_xaxes(title_text="Date (UTC)", range=[data['utc'].iso[0], data['utc'].iso[-1]])
-    fig.update_yaxes(title_text="Hours observable", range=[0, 12], row=1, col=1)
-    fig.update_yaxes(title_text="Elevation (deg.)", range=[-90, 90], row=2, col=1)
+    fig.update_xaxes(title_text="Date (UTC)", 
+                     range=[data['days_utc'].iso[0], data['days_utc'].iso[-1]], 
+                     showgrid=False, tickformat="%d/%m/%y")
+    fig.update_yaxes(
+        title_text="Hours observable",
+        range=[0, 12],
+        row=1, col=1,
+        showgrid=True,
+        tickvals=[0, 3, 6, 9, 12],
+        ticktext=['0', '3', '6', '9', '12']
+    )
+    fig.update_yaxes(
+        title_text="Elevation",
+        range=[-90, 90],
+        showgrid=False,
+        zeroline=False,
+        tickvals=[-90, -45, 0, 45, 90],
+        ticktext=['-90°', '-45°', '0°', '45°', '90°'],
+        row=2, col=1
+    )
     fig.update_layout(height=400, width=700, showlegend=False, margin=dict(l=60, r=40, t=50, b=50)) 
 
     fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure3')
