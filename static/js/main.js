@@ -53,10 +53,13 @@ rows.forEach((row, index) => {
         })
         .then(res => res.json())
         .then(data => {
+            // Before overwriting innerHTML, purge the old figure:
             ['fig1-content', 'fig2-content', 'fig3-content'].forEach(id => {
-                const key = id.replace('-content', '_html').replace('-', '');
-                // keys: fig1_html, fig2_html, fig3_html
                 const container = document.getElementById(id);
+                const existingPlot = container.querySelector('.plotly-graph-div');
+                if (existingPlot) {
+                    Plotly.purge(existingPlot);  // ← releases Plotly's internal references
+                }
                 container.innerHTML = data[id.replace('-content', '_html')];
                 activateScripts(container);
             });
@@ -120,8 +123,10 @@ function refreshCountdown() {
 }
 
 updateCountdown();
-setInterval(updateCountdown, 1000);
-setInterval(refreshCountdown, 1000);
+setInterval(() => {
+    updateCountdown();
+    refreshCountdown();
+}, 1000);
 
 
 // ---- Map type toggle ----

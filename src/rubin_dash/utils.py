@@ -568,8 +568,9 @@ def make_html_visits_map(data, idx_mem, maptype):
 
     fig.update_layout(autosize=True, width=None, height=None)
 
-    fig_html = fig.to_html(include_plotlyjs='cdn', full_html=False, div_id='figure1',
-                           config={'responsive': True})
+    fig_html = fig.to_html(full_html=False, div_id='figure1',
+                        config={'responsive': True},
+                        include_plotlyjs=False)   # ← rely on the CDN load
     
     return fig_html
 
@@ -652,7 +653,8 @@ def make_html_visits_plot(data, maptype):
     fig.update_layout(autosize=True, width=None, height=None)
 
     fig_html = fig.to_html(full_html=False, div_id='figure2',
-                           config={'responsive': True})
+                        config={'responsive': True},
+                        include_plotlyjs=False)   # ← rely on the CDN load
 
     return fig_html
 
@@ -837,7 +839,8 @@ def make_html_obs_plot(data):
     fig.update_layout(autosize=True, width=None, height=None)
 
     fig_html = fig.to_html(full_html=False, div_id='figure3',
-                           config={'responsive': True})
+                        config={'responsive': True},
+                        include_plotlyjs=False)   # ← rely on the CDN load
 
     return fig_html
 
@@ -950,82 +953,4 @@ def read_log(dir_files, file_time, search_string):
 
     return ts
 
-
-
-
-def time_series(target, member):
-
-    t = []
-    Nvisits_daily = {}
-    Nvisits_tot   = {}
-    Nvisits_prev_tot = {}
-
-    bands = ['u','g','r','i','z','y']
-    for band in bands:
-        Nvisits_prev_tot[band] = 0
-        Nvisits_daily[band] = []
-        Nvisits_tot[band] = []
-
-    for date in target.data['daily'].keys():
-        t.append(date)
-
-        for band in bands:
-
-            # Today's visits:
-            Nvisits_today = target.data['daily'][date][band+'visits'][member]
-            Nvisits_daily[band].append(Nvisits_today)
-
-            # Total visits:
-            Nvisits_tot[band].append(Nvisits_prev_tot[band] + Nvisits_today)
-
-            # Update previous total tracker:
-            Nvisits_prev_tot[band] = Nvisits_tot[band][-1].copy()
-            
-    return t, Nvisits_daily, Nvisits_tot
-
-def visits_plots(target, member, maptype):
- 
-    fig = make_subplots(
-        rows=1, cols=1,
-        specs=[[{"type": "scatter"}]]
-    )
-
-    filter_names = ['u', 'g', 'r', 'i', 'z', 'y']
-    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
-    msizes = [18, 16, 14, 12, 10, 8]
-
-    t, Nvisits_daily, Nvisits_tot = time_series(target, member)
-
-    # Loop through and add traces
-    for color, name, s in zip(colors, filter_names, msizes):
-
-        if maptype == 'daily':
-            y = Nvisits_daily[name]
-        if maptype == 'total':
-            y = Nvisits_tot[name]
-
-        #print(name)
-        fig.add_trace(
-            go.Scatter(
-                x=t,
-                y=y,
-                mode='lines+markers',
-                name=name,
-                marker=dict(
-                    size=s,
-                    color=color,
-                    symbol='circle'
-                )
-            ),
-            row=1, col=1
-        )
-
-    fig.update_xaxes(title_text="Date", row=1)
-    fig.update_yaxes(title_text="Number of visits", col=1)
-    fig.update_layout(height=400, width=700, showlegend=True)
-
-    # For the second figure, we don't need to include plotly.js again
-    fig_html = fig.to_html(include_plotlyjs=False, full_html=False, div_id='figure2')
-
-    return fig_html
 
