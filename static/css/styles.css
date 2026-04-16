@@ -100,32 +100,21 @@ h2 {
     margin: 5px auto;
     font-size: 10px;
     border: 1px solid var(--c-outlines);
-    table-layout: fixed;
-    min-width: 480px;           
+    table-layout: auto;
+    width: max-content;
+    max-width: 100%;           
 }
-/* ---------- Column widths ---------- */
-.data-table th:nth-child(1),
-.data-table td:nth-child(1) { width: 20px; }
-
-.data-table th:nth-child(2),
-.data-table td:nth-child(2) { width: 80px; }
-
-.data-table th:nth-child(n+3):nth-child(-n+4),
-.data-table td:nth-child(n+3):nth-child(-n+4) { width: 30px; }
-
-.data-table th:nth-child(n+5):nth-child(-n+10),
-.data-table td:nth-child(n+5):nth-child(-n+10) { width: 20px; }
 
 .data-table th {
     background-color: var(--c-tablebrdr);
     color: var(--c-tabletext);
-    padding: 10px 10px;
+    padding: 6px 12px;
     text-align: center;
     border-left: 1px solid var(--c-outlines);
     border-right: 1px solid var(--c-outlines);
 }
 .data-table td {
-    padding: 10px 10px;
+    padding: 6px 12px;
     border: 1px solid var(--c-outlines);
     text-align: center;
 }
@@ -149,7 +138,7 @@ h2 {
     top: 0;
     z-index: 100;
     background: var(--c-plots);
-    max-height: 360px;        /* overall cap stays the same */
+    max-height: 340px;        /* overall cap stays the same */
     display: flex;             /* ← NEW: stack h2 + scroll area vertically */
     flex-direction: column;    /* ← NEW */
 }
