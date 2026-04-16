@@ -515,6 +515,8 @@ def make_html_visits_map(data, idx_mem, maptype):
                         specs = specs,
                         vertical_spacing=0.1,
                         horizontal_spacing=0.01)
+    title = f"<b>RA = {data['ra_mem'][0]}&deg;, dec = {data['dec_mem'][0]}&deg;</b>"
+    fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
 
     Nmax = 20
     for row in range(1, 3):  # rows 1 and 2
@@ -602,6 +604,14 @@ def populate_times_series(gid, idx_mem, cur):
 
     data['total'] = pd.DataFrame(cur.fetchall(), columns=['time'] + VISIT_COLS)
 
+    # Member coordinates
+    cur.execute("""
+        SELECT ra_mem, dec_mem FROM members
+        WHERE group_id = %s ORDER BY member_id
+    """, (gid,))
+    members = cur.fetchall()
+    data['ra_mem']  = np.array([m['ra_mem']  for m in members])
+    data['dec_mem'] = np.array([m['dec_mem'] for m in members])
     #data['ra_mem']  = #np.array([m['ra_mem']  for m in members])
     #data['dec_mem'] = #np.array([m['dec_mem'] for m in members])
     #data[] = 
@@ -612,6 +622,8 @@ def populate_times_series(gid, idx_mem, cur):
 def make_html_visits_plot(data, maptype):
 
     fig = make_subplots(rows=1, cols=1,specs=[[{"type": "scatter"}]])
+    title = f"<b>RA = {data['ra_mem'][0]}&deg;, dec = {data['dec_mem'][0]}&deg;</b>"
+    fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
 
     colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
     msizes = [18, 16, 14, 12, 10, 8]
@@ -725,11 +737,9 @@ def populate_observability(gid, idx_mem, cur, date):
 
 def make_html_obs_plot(data):
 
-    fig = make_subplots(
-        rows=2, cols=1,
-        specs=[[{"type": "scatter"}]]*2
-    )
-
+    fig = make_subplots(rows=2, cols=1, specs=[[{"type": "scatter"}]]*2)
+    title = f"<b>RA = {data['ra']}&deg;, dec = {data['dec']}&deg;</b>"
+    fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
 
     fig.add_trace(
         go.Scatter(
@@ -834,6 +844,7 @@ def make_html_obs_plot(data):
 #####################
 # Wrapper helper code
 #####################
+
 
 def set_up_db():
     subprocess.run(["dropdb", "lsst_database"])
