@@ -29,7 +29,7 @@ from datetime import datetime
 import matplotlib.dates as mdates
 import time
 import matplotlib.pyplot as plt
-from rubin_dash.config import VERBOSE
+from rubin_dash.config import VERBOSE, DB_NAME
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -820,11 +820,11 @@ def make_html_obs_plot(data):
                      showgrid=False, tickformat="%d/%m/%y")
     fig.update_yaxes(
         title_text="Hours observable",
-        range=[0, 12],
+        range=[0, 15],
         row=1, col=1,
         showgrid=True,
-        tickvals=[0, 3, 6, 9, 12],
-        ticktext=['0', '3', '6', '9', '12']
+        tickvals=[0, 3, 6, 9, 12, 15],
+        ticktext=['0', '3', '6', '9', '12', '15']
     )
     fig.update_yaxes(
         title_text="Elevation",
@@ -850,9 +850,9 @@ def make_html_obs_plot(data):
 
 
 def set_up_db():
-    subprocess.run(["dropdb", "lsst_database"])
-    subprocess.run(["createdb", "lsst_database"])
-    subprocess.run(["psql", "-d", "lsst_database", "-f", "schema.sql"])
+    subprocess.run(["dropdb", DB_NAME])
+    subprocess.run(["createdb", DB_NAME])
+    subprocess.run(["psql", "-d", DB_NAME, "-f", "schema.sql"])
     return
 
 def write(destinations, msg, at_line_start):
@@ -912,14 +912,15 @@ def monitoring_plots(dir_files, file_time, ymax_mb=800):
 
     colors = ['grey', 'blue', 'green']
     labels = ['update', 'toggle map', 'click row']
+    linestyles = ['dashed', 'dashed', 'dotted']
     ts = [ts_update, ts_maptype, ts_rowpick]
     for j in range(0,3):
         for i in range(0,len(ts[j])):
             if i == 0:
-                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle='dashed', 
+                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle=linestyles[j], 
                     linewidth=0.5, color=colors[j], label=labels[j])
             else:
-                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle='dashed', 
+                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle=linestyles[j], 
                         linewidth=0.5, color=colors[j])
 
     ax2 = ax.twinx()

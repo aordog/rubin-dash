@@ -18,8 +18,13 @@ from rubin_dash.utils import monitoring_plots
 #file_time = "2026-04-16-11-48-23" # row diff grp, row same grp, daily/total toggle
 #file_time = "2026-04-16-12-12-24" # change row order, change zoom and screen size
 #file_time = "2026-04-16-13-05-24" # long run with lots of clicks
-file_time = "2026-04-16-14-48-38" # after fixing various memory issues
-
+#file_time = "2026-04-16-14-48-38" # after fixing various memory issues
+#file_time = "2026-04-17-11-36-33" # big data set, long-ish run during DDS meeting
+#file_time = "2026-04-17-16-55-03" # test the automated stress-tester
+#file_time = "2026-04-20-16-30-15" # looked like it was fixed... but wasn't
+#file_time = "2026-04-21-14-45-53" # no stress control test
+#file_time = "2026-04-21-15-03-03" # manual clicking
+file_time = "2026-04-21-15-17-11"  # new stress test with many clicks
 
 dir_files = "/home/aordog/Dropbox/candiapl/rubin-dash-out/"
 

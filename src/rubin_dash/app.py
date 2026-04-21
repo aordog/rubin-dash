@@ -116,6 +116,7 @@ def create_app(
             "updating":     snap["updating"],
             "progress":     snap["progress"],
             "progress_msg": snap["progress_msg"],
+            "cycle_number": snap["cycle_number"],
         })
 
     return app

@@ -20,7 +20,7 @@ import gc
 import time
 from typing import TYPE_CHECKING
 
-from rubin_dash.config import REFRESH_INTERVAL, simulation_dates
+from rubin_dash.config import REFRESH_INTERVAL, simulation_dates, MEM_TEST_MODE
 from rubin_dash.core import (
     populate_database,
     TableData,
@@ -53,10 +53,15 @@ def data_loop(
 
     Designed to run in a daemon thread.
     """
+    cycle_number = 0
     for date in simulation_dates():
+        cycle_number += 1
+        
+        print(f"[CYCLE START #{cycle_number}] {date}")
 
         # Signal "processing"
         shared_state.write(
+            cycle_number=cycle_number,
             updating=True,
             progress=0.0,
             progress_msg=f"Processing {date}...",
@@ -95,6 +100,7 @@ def data_loop(
                 s["updating"]     = False
                 s["progress"]     = 0.0
                 s["next_update"]  = time.time() + REFRESH_INTERVAL
+                s["cycle_number"] = cycle_number
 
             print("============================")
             print(f"Updated data for {date}")
@@ -102,3 +108,4 @@ def data_loop(
 
         reclaim_memory()
         time.sleep(REFRESH_INTERVAL)
+        print(f"[CYCLE END #{cycle_number}]")
