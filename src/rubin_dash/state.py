@@ -19,6 +19,7 @@ class SharedState:
             "progress":     0.0,
             "progress_msg": "",
             "next_update":  0.0,
+            "cycle_number": 0,
         }
 
     # -- Backward-compatible accessors for populate_database() --------

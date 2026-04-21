@@ -10,6 +10,7 @@ from pathlib import Path
 from rubin_dash.config import (
     DEFAULT_USER_ID,
     INITIAL_OFFSET,
+    MEM_TEST_MODE,
     OUTPUT_BASE,
     PORT,
     QUERY_FILE,
@@ -19,6 +20,7 @@ from rubin_dash.utils import set_up_db, monitor_resources
 from rubin_dash.state import SharedState
 from rubin_dash.pipeline import data_loop
 from rubin_dash.app import create_app
+from rubin_dash.stress_monitor import stress_test_monitor
 
 # Resolve project root (…/src/rubin_dash/__main__.py  →  …/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -66,6 +68,14 @@ def main() -> None:
         daemon=True,
     )
     data_thread.start()
+
+    if MEM_TEST_MODE:
+        stress_test_thread = threading.Thread(
+            target=stress_test_monitor,
+            args=(shared_state, cur),
+            daemon=True,
+        )
+        stress_test_thread.start()
 
     threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
 
