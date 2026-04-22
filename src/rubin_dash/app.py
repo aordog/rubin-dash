@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import psycopg2.extras
 from flask import Flask, jsonify, render_template, request
+
 from rubin_dash.pipeline import reclaim_memory
-from rubin_dash.core import TargetMap, TargetTimeSeries, ObservabilityData
+from rubin_dash.displays import TargetMap, TargetTimeSeries, ObservabilityData
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
 
