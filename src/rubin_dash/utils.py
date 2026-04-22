@@ -14,21 +14,17 @@ import pandas as pd
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import random # only needed for making fake bands and camera angles for now
-import os, psutil
+import os
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy.coordinates import SkyCoord
 from astropy import coordinates as coord
-from astropy.visualization import time_support
 import ephem
 import healpy as hp
 import psycopg2
 import psycopg2.extras
 import subprocess
 from datetime import datetime
-import matplotlib.dates as mdates
-import time
-import matplotlib.pyplot as plt
 from rubin_dash.config import VERBOSE, DB_NAME
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
@@ -875,83 +871,6 @@ def write(destinations, msg, at_line_start):
 
     return at_line_start
 
-def monitor_resources(log_path, interval=5, stop_event=None):
-    """
-    Logs CPU and memory usage to a file at regular intervals.
-    Runs until stop_event is set.
-    """
-    process = psutil.Process(os.getpid())
 
-    with open(log_path, "w") as f:
-        f.write("timestamp,cpu_percent,memory_mb\n")
-
-        while not stop_event.is_set():
-            cpu = process.cpu_percent(interval=interval)
-            mem = process.memory_info().rss / (1024 * 1024)  # bytes → MB
-            ts  = time.strftime("%Y-%m-%d %H:%M:%S")
-
-            f.write(f"{ts},{cpu:.1f},{mem:.1f}\n")
-            f.flush()
-
-def monitoring_plots(dir_files, file_time, ymax_mb=800):
-
-    time_support()
-
-    data = pd.read_csv(f"{dir_files}{file_time}/resources_{file_time}.csv")
-
-    timestamp   = Time(data['timestamp'].tolist())
-    cpu_percent = np.array(data['cpu_percent'])
-    memory_mb   = np.array(data['memory_mb'])
-
-    ts_update  = read_log(dir_files, file_time, "Updated data for")
-    ts_maptype = read_log(dir_files, file_time, "Map type")
-    ts_rowpick = read_log(dir_files, file_time, "Row")
-
-    fig, ax = plt.subplots(1,1, figsize=(10,5))
-    ax.plot(timestamp, memory_mb, color='k', label='memory')
-
-    colors = ['grey', 'blue', 'green']
-    labels = ['update', 'toggle map', 'click row']
-    linestyles = ['dashed', 'dashed', 'dotted']
-    ts = [ts_update, ts_maptype, ts_rowpick]
-    for j in range(0,3):
-        for i in range(0,len(ts[j])):
-            if i == 0:
-                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle=linestyles[j], 
-                    linewidth=0.5, color=colors[j], label=labels[j])
-            else:
-                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle=linestyles[j], 
-                        linewidth=0.5, color=colors[j])
-
-    ax2 = ax.twinx()
-    ax2.plot(timestamp, cpu_percent, color='purple', label='CPU')
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-
-    ax.set_ylim(0,ymax_mb)
-    ax2.set_ylim(0,130)
-
-    ax.set_xlim(timestamp[0],timestamp[-1])
-
-    ax.legend(framealpha=1, loc='upper left')
-    ax2.legend(framealpha=1, loc='upper right')
-
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Memory (MB)')
-    ax2.set_ylabel('CPU (%)')
-
-    plt.savefig(f"{dir_files}{file_time}/{file_time}.pdf")
-    plt.savefig(f"{dir_files}{file_time}/{file_time}.png")
-
-    return
-
-def read_log(dir_files, file_time, search_string):
-
-    ts = []
-    with open(f"{dir_files}{file_time}/log_{file_time}.txt", 'r') as file:
-        for line in file:
-            if search_string in line:
-                ts.append(line.strip().split()[0][1::]+" "+line.strip().split()[1][0:-1])
-
-    return ts
 
 
