@@ -15,8 +15,8 @@ from rubin_dash.config import (
     PORT,
     QUERY_FILE,
 )
-from rubin_dash.core import QuietFilter, Logger, initialize_tracking
-from rubin_dash.utils import set_up_db
+from rubin_dash.core import QuietFilter, Logger 
+from rubin_dash.database import initialize_tracking, set_up_db
 from rubin_dash.state import SharedState
 from rubin_dash.pipeline import data_loop
 from rubin_dash.app import create_app
