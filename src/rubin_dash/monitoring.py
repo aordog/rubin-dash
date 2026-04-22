@@ -1,13 +1,29 @@
 """
+monitoring.py: code to monitor memory and CPU usage.
+
+1. monitor_resources:
+Logs resource usage for each run with or without the stress_test running.
+
+2. stress_test: 
 Stress test monitor that prints the expected click pattern based on cycle number.
 Also performs automated clicks based on cycle pattern, repeating every N seconds.
 Runs as a background thread if MEM_TEST_MODE is enabled.
+
+**Author:** Anna Ordog, for CanDIAPL
+
 """
 
 import time
+from astropy.time import Time
+from astropy.visualization import time_support
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import random
 from typing import TYPE_CHECKING
 import requests
+import os, psutil
+import numpy as np
+import pandas as pd
 
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
@@ -84,8 +100,87 @@ def perform_maptype_click(base_url: str, maptype: str, gn: str, mn: str) -> None
     except Exception as e:
         print(f"Maptype click error: {e}")
 
+def monitoring_plots(dir_files, file_time, ymax_mb=800):
 
-def stress_test_monitor(shared_state: "SharedState", cur) -> None:
+    time_support()
+
+    data = pd.read_csv(f"{dir_files}/{file_time}/resources_{file_time}.csv")
+
+    timestamp   = Time(data['timestamp'].tolist())
+    cpu_percent = np.array(data['cpu_percent'])
+    memory_mb   = np.array(data['memory_mb'])
+
+    ts_update  = read_log(dir_files, file_time, "Updated data for")
+    ts_maptype = read_log(dir_files, file_time, "Map type")
+    ts_rowpick = read_log(dir_files, file_time, "Row")
+
+    fig, ax = plt.subplots(1,1, figsize=(10,5))
+    ax.plot(timestamp, memory_mb, color='k', label='memory')
+
+    colors = ['grey', 'blue', 'green']
+    labels = ['update', 'toggle map', 'click row']
+    linestyles = ['dashed', 'dashed', 'dotted']
+    ts = [ts_update, ts_maptype, ts_rowpick]
+    for j in range(0,3):
+        for i in range(0,len(ts[j])):
+            if i == 0:
+                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle=linestyles[j], 
+                    linewidth=0.5, color=colors[j], label=labels[j])
+            else:
+                ax.plot(Time([ts[j][i], ts[j][i]]),[0,1000], linestyle=linestyles[j], 
+                        linewidth=0.5, color=colors[j])
+
+    ax2 = ax.twinx()
+    ax2.plot(timestamp, cpu_percent, color='purple', label='CPU')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+
+    ax.set_ylim(0,ymax_mb)
+    ax2.set_ylim(0,130)
+
+    ax.set_xlim(timestamp[0],timestamp[-1])
+
+    ax.legend(framealpha=1, loc='upper left')
+    ax2.legend(framealpha=1, loc='upper right')
+
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Memory (MB)')
+    ax2.set_ylabel('CPU (%)')
+
+    plt.savefig(f"{dir_files}/{file_time}/{file_time}.pdf")
+    plt.savefig(f"{dir_files}/{file_time}/{file_time}.png")
+
+    return
+
+def read_log(dir_files, file_time, search_string):
+
+    ts = []
+    with open(f"{dir_files}/{file_time}/log_{file_time}.txt", 'r') as file:
+        for line in file:
+            if search_string in line:
+                ts.append(line.strip().split()[0][1::]+" "+line.strip().split()[1][0:-1])
+
+    return ts
+
+
+def monitor_resources(log_path, interval=5, stop_event=None):
+    """
+    Logs CPU and memory usage to a file at regular intervals.
+    Runs until stop_event is set.
+    """
+    process = psutil.Process(os.getpid())
+
+    with open(log_path, "w") as f:
+        f.write("timestamp,cpu_percent,memory_mb\n")
+
+        while not stop_event.is_set():
+            cpu = process.cpu_percent(interval=interval)
+            mem = process.memory_info().rss / (1024 * 1024)  # bytes → MB
+            ts  = time.strftime("%Y-%m-%d %H:%M:%S")
+
+            f.write(f"{ts},{cpu:.1f},{mem:.1f}\n")
+            f.flush()
+
+def stress_test(shared_state: "SharedState", cur) -> None:
     """
     Monitor cycle_number and perform automated clicks based on cycle pattern.
     

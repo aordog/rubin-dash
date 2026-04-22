@@ -16,11 +16,11 @@ from rubin_dash.config import (
     QUERY_FILE,
 )
 from rubin_dash.core import QuietFilter, Logger, initialize_tracking
-from rubin_dash.utils import set_up_db, monitor_resources
+from rubin_dash.utils import set_up_db
 from rubin_dash.state import SharedState
 from rubin_dash.pipeline import data_loop
 from rubin_dash.app import create_app
-from rubin_dash.stress_monitor import stress_test_monitor
+from rubin_dash.monitoring import stress_test, monitor_resources, monitoring_plots
 
 # Resolve project root (…/src/rubin_dash/__main__.py  →  …/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -71,7 +71,7 @@ def main() -> None:
 
     if MEM_TEST_MODE:
         stress_test_thread = threading.Thread(
-            target=stress_test_monitor,
+            target=stress_test,
             args=(shared_state, cur),
             daemon=True,
         )
@@ -85,6 +85,7 @@ def main() -> None:
     finally:
         stop_monitor.set()
         monitor_thread.join(timeout=10)
+        monitoring_plots(OUTPUT_BASE, timestamp, ymax_mb=500)
         log_file.close()
 
 
