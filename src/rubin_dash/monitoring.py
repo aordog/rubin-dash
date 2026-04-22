@@ -1,13 +1,20 @@
 """
 monitoring.py: code to monitor memory and CPU usage.
 
-1. monitor_resources:
-Logs resource usage for each run with or without the stress_test running.
-
-2. stress_test: 
-Stress test monitor that prints the expected click pattern based on cycle number.
-Also performs automated clicks based on cycle pattern, repeating every N seconds.
-Runs as a background thread if MEM_TEST_MODE is enabled.
+Classes
+-------
+QuietFilter
+    Logging filter to suppress noisy output from specific endpoints.
+Logger
+    Logging handler for writing to terminal and log file.
+ 
+Main Functions
+-------
+monitor_resources:
+    Logs resource usage for each run with or without the stress_test running.
+stress_test: 
+    Stress test performs automated clicks based on cycle pattern, runs as a 
+    background thread if MEM_TEST_MODE is enabled.
 
 **Author:** Anna Ordog, for CanDIAPL
 
@@ -16,9 +23,11 @@ Runs as a background thread if MEM_TEST_MODE is enabled.
 import time
 from astropy.time import Time
 from astropy.visualization import time_support
+from datetime import datetime
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import random
+import logging
 from typing import TYPE_CHECKING
 import requests
 import os, psutil
@@ -161,6 +170,96 @@ def read_log(dir_files, file_time, search_string):
 
     return ts
 
+def write(destinations, msg, at_line_start):
+    lines = msg.split("\n")
+
+    for i, line in enumerate(lines):
+        if i > 0:
+            for dest in destinations:
+                dest.write("\n")
+            at_line_start = True
+
+        if line:
+            if at_line_start:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                line = f"[{timestamp}] {line}"
+                at_line_start = False
+            for dest in destinations:
+                dest.write(line)
+                dest.flush()
+
+    return at_line_start
+
+class QuietFilter(logging.Filter):
+    """Logging filter to suppress verbose Flask endpoint messages.
+    
+    Filters out logging records from endpoints that generate high-cadence
+    messages not useful for debugging or monitoring to keep log files and 
+    terminal output readable.
+    
+    Attributes
+    ----------
+    NOISY : set
+        Collection of endpoint paths whose log messages should be suppressed.
+    """
+
+    NOISY = {'/check_update', '/next_update'}
+
+    def filter(self, record):
+        """Check if a log record should be allowed.
+        
+        Parameters
+        ----------
+        record : logging.LogRecord
+            The log record to filter.
+        
+        Returns
+        -------
+        bool
+            False if the record contains a message from a noisy endpoint,
+            True otherwise.
+        """
+        return not any(path in record.getMessage() for path in self.NOISY)
+
+
+class Logger:
+    """Multi-destination logging handler with timestamp prefixing.
+    
+    Writes log messages to multiple output streams (terminal, file) with
+    timestamps. Compatible with sys.stdout/sys.stderr redirection.
+    
+    Parameters
+    ----------
+    *destinations : file-like
+        Variable number of output streams to write to (e.g., sys.stdout,
+        open file objects).
+    
+    Attributes
+    ----------
+    destinations : tuple
+        Collection of output streams.
+    at_line_start : bool
+        Flag tracking start of new line (for timestamp insertion).
+    """
+    
+    def __init__(self, *destinations):
+        self.destinations = destinations
+        self.at_line_start = True
+
+    def write(self, msg):
+        """Write to all destinations with timestamp prefixing.
+        
+        Parameters
+        ----------
+        msg : str
+            The message to write.
+        """
+        self.at_line_start = write(self.destinations, msg, self.at_line_start)
+
+    def flush(self):
+        """Flush all output streams."""
+        for dest in self.destinations:
+            dest.flush()
 
 def monitor_resources(log_path, interval=5, stop_event=None):
     """

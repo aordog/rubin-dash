@@ -3,6 +3,23 @@ displays.py: code to generate HTML tables and figures for webpage display.
 
 **Author:** Anna Ordog, for CanDIAPL
 
+Classes
+-------
+BasePlot
+    Base class for plot formatting and display.
+QuietFilter
+    Logging filter to suppress noisy output from specific endpoints.
+Logger
+    Logging handler for writing to terminal and log file.
+TableData
+    Manages summary table data for display.
+TargetMap
+    Manages 2D visits coverage maps for groups of targets.
+TargetTimeSeries
+    Manages time series visits data for individual targets.
+ObservabilityData
+    Manages future observability predictions for targets.
+
 """
 import pandas as pd
 import numpy as np
