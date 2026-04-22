@@ -1,4 +1,8 @@
-"""Flask application factory and route definitions."""
+"""
+app.py: Flask application factory and route definitions.
+
+**Author:** Anna Ordog, for CanDIAPL
+"""
 
 from __future__ import annotations
 

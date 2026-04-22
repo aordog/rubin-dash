@@ -1,17 +1,14 @@
 """
 database.py: code for LSST and local databases.
 
-Main functions:
-
-1. set_up_db:
-Create the database using the defined schema.
-
-2. initialize_tracking:
-Load the requested list of targets into the database and get the LSST camera
-information.
-
-3. populate_database:
-When querying a new day, populate the database with latest visits information.
+Main Functions
+---------
+set_up_db
+    Create the database using the defined schema.
+initialize_tracking
+    Load list of targets into the database and get LSST camera information.
+populate_database
+    Process visits and mask data for all target groups.
 
 **Author:** Anna Ordog, for CanDIAPL
 

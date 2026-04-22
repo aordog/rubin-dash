@@ -15,12 +15,16 @@ from rubin_dash.config import (
     PORT,
     QUERY_FILE,
 )
-from rubin_dash.core import QuietFilter, Logger 
+ 
 from rubin_dash.database import initialize_tracking, set_up_db
 from rubin_dash.state import SharedState
 from rubin_dash.pipeline import data_loop
 from rubin_dash.app import create_app
-from rubin_dash.monitoring import stress_test, monitor_resources, monitoring_plots
+from rubin_dash.monitoring import (stress_test, 
+                                    monitor_resources, 
+                                    monitoring_plots,
+                                    QuietFilter,
+                                    Logger)
 
 # Resolve project root (…/src/rubin_dash/__main__.py  →  …/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent

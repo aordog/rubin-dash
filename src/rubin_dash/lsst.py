@@ -1,14 +1,14 @@
 """
 lsst.py: code for accessing LSST services and databases.
 
-1. rsv_service:
-Establish connection to Rubin Schedule Viewer.
-
-2. get_metadata_rsv:
-Get pointing data from Rubin Schedule Viewer.
-
-3. get_camera: 
-Get LSST camera footprint.
+Main Functions
+-------
+rsv_service
+    Establish connection to Rubin Schedule Viewer.
+get_metadata_rsv
+    Get pointing data from Rubin Schedule Viewer.
+get_camera: 
+    Get LSST camera footprint.
 
 **Author:** Anna Ordog, for CanDIAPL
 
