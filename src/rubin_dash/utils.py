@@ -23,9 +23,8 @@ import ephem
 import healpy as hp
 import psycopg2
 import psycopg2.extras
-import subprocess
 from datetime import datetime
-from rubin_dash.config import VERBOSE, DB_NAME
+from rubin_dash.config import VERBOSE
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -35,24 +34,8 @@ VISIT_COLS = [f'{b}visits' for b in BANDS]
 # Data preparation
 #####################
 
-def read_csv_file(file_in, declim):
-
-    with open(file_in, 'r') as f:
-        lines = f.readlines()
-
-    header_idx = next(i for i, line in enumerate(lines) if line.startswith('No.'))
-
-    df = pd.read_csv(file_in,
-                    sep='|',
-                    skiprows=header_idx,
-                    header=0,
-                    skipinitialspace=True)
-
-    df.columns = df.columns.str.strip()
-    df['Object Name'] = df['Object Name'].str.strip()
-
-    return remove_high_dec(df['RA'].values.astype(float), 
-                           df['DEC'].values.astype(float), declim)
+def remove_high_dec(ra_in, dec_in, dec_lim):
+    return ra_in[dec_in<dec_lim], dec_in[dec_in<dec_lim]
 
 def make_fake_src_list(nside, declim):
 
@@ -63,78 +46,6 @@ def make_fake_src_list(nside, declim):
     return remove_high_dec(ra.astype(float), 
                            dec.astype(float), declim)
 
-def remove_high_dec(ra_in, dec_in, dec_lim):
-    return ra_in[dec_in<dec_lim], dec_in[dec_in<dec_lim]
-
-def group_targets(ra_list, dec_list, nside):
-
-    pixel_ids = hp.ang2pix(nside, ra_list, dec_list, lonlat=True)
-    idx_filled = np.unique(pixel_ids)
-
-    groups = []
-    for idx in idx_filled:
-        coords_group = hp.pix2ang(nside, idx, lonlat=True)
-        group_dict = {'name_gr': 'nside'+str(nside)+'_'+str(idx),
-                      'ra_gr'  : float(coords_group[0]),
-                      'dec_gr' : float(coords_group[1]),
-                      'ra_mem' : ra_list[pixel_ids == idx],
-                      'dec_mem': dec_list[pixel_ids == idx]}
-        groups.append(group_dict)
-
-    return groups
-
-def setup_targets(conn, user_id, list_grouped):
-    """Populate groups + members. Run once."""
-
-    cur = conn.cursor()
-
-    for group in list_grouped:
-
-        # Make the grids centred on each group for the masks:
-        ra_grid, dec_grid = add_mask_grid(group['ra_gr'], group['dec_gr'])
-
-        # Add group info to the 'groups' table, returning the group ID:
-        cur.execute("""
-            INSERT INTO groups (user_id, name_gr, ra_gr, dec_gr, ra_grid, dec_grid)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING group_id
-        """, (user_id, group['name_gr'], group['ra_gr'], group['dec_gr'],
-              psycopg2.Binary(ra_grid.tobytes()),
-              psycopg2.Binary(dec_grid.tobytes())))
-        
-        # Extract group ID to use in 'members' table:
-        gid = cur.fetchone()[0]
-
-        # For each group, add all the member-target info to the 'members' group
-        for idx, (ra_mem, dec_mem) in enumerate(zip(group['ra_mem'], group['dec_mem'])):
-            cur.execute("""
-                INSERT INTO members (group_id, member_idx, ra_mem, dec_mem)
-                VALUES (%s, %s, %s, %s)
-            """, (gid, idx, float(ra_mem), float(dec_mem)))
-
-    # Save everything to the database:
-    conn.commit()
-
-    return
-
-def add_mask_grid(pointing_ra, pointing_dec):
-
-    samp=0.0166667
-    radius = 2.5 # should work well for nside=16 grouping
-
-    ra_grid = np.arange(pointing_ra - radius*np.cos(np.radians(pointing_dec)), 
-                   pointing_ra + radius, 
-                   samp * np.cos(np.radians(pointing_dec)))
-    
-    dec_grid = np.arange(pointing_dec - radius*np.cos(np.radians(pointing_dec)), 
-                    pointing_dec + radius, 
-                    samp)
-    
-    ra_grid, dec_grid = np.meshgrid(ra_grid, dec_grid)
-    ra_grid  = ra_grid.flatten()
-    dec_grid = dec_grid.flatten()
-
-    return ra_grid, dec_grid
 
 #####################
 # Data processing 
@@ -203,141 +114,13 @@ def make_fake_rot(nvisits):
 
     return [random.uniform(0, 90) for _ in range(nvisits)]
 
-def process_group(gid, date, visits, camera, conn):
-
-    """Load one group from DB, compute masks, save → return (memory freed)."""
-
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    ra_grid, dec_grid, mask_row = read_grid_and_mask(gid, cur)
-
-    if mask_row and mask_row[MASK_COLS[0]] is not None:
-        totals = {col: np.frombuffer(mask_row[col], dtype=np.int16).copy() for col in MASK_COLS}
-    else:
-        totals = {col: np.zeros(len(ra_grid), dtype=np.int16) for col in MASK_COLS}
-
-    # Compute today's masks:
-    latest = compute_daily_masks(visits, camera, ra_grid, dec_grid)
-    latest = {col: latest[col].astype(np.int16) for col in MASK_COLS}
-
-    # Add today's mask to the totals:
-    for col in MASK_COLS:
-        totals[col] += latest[col]
-
-    # Save both mask sets
-    _upsert_masks(cur, gid, 'latest', latest)
-    _upsert_masks(cur, gid, 'total',  totals)
-
-    # Load members for the selected group:
-    cur.execute("""
-                SELECT member_id, ra_mem, dec_mem FROM members
-                WHERE group_id = %s ORDER BY member_idx
-                """, (gid,))
-    
-    # Compute total and daily visits:
-    for mem in cur.fetchall():
-        total_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, totals)
-        daily_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, latest)
-        
-        # Save daily and total visits
-        _insert_member_totals(cur, date, mem['member_id'], total_v)
-        _insert_daily_visits(cur, date, mem['member_id'], daily_v)
-
-    conn.commit()
-    
-    return
-
-def read_grid_and_mask(gid, cur):
-
-    # Load grids needed for making the mask:
-    cur.execute(
-            "SELECT ra_gr, dec_gr, ra_grid, dec_grid FROM groups WHERE group_id = %s",
-            (gid,))
-    grp = cur.fetchone()
-    ra_grid  = np.frombuffer(grp['ra_grid'])
-    dec_grid = np.frombuffer(grp['dec_grid'])
-
-    # Load existing total masks (zeros on first day):
-    cols = ', '.join(MASK_COLS)
-    cur.execute(f"""
-                SELECT {cols}
-                FROM group_masks WHERE group_id = %s AND mask_type = 'total'
-                """, (gid,))
-    mask_row = cur.fetchone()
-
-    return ra_grid, dec_grid, mask_row
-
-def compute_daily_masks(visits_use: dict,
-                        camera,
-                        ra_grid: np.ndarray, 
-                        dec_grid: np.ndarray):
-
-    latest = {}
-
-    for band, mask_name in zip(BANDS, MASK_COLS):
-
-        latest[mask_name] = np.zeros(len(ra_grid))
-
-        idxs = np.where(np.array(visits_use['band']) == band)[0]
-        for i in idxs:
-           idx_visit = camera(ra_grid, dec_grid, 
-                              visits_use['ra'][i], 
-                              visits_use['dec'][i], 
-                              visits_use['rot'][i])
-           latest[mask_name][idx_visit] = latest[mask_name][idx_visit] + 1
-
-    return latest
-
-def compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
-
-    visits_counts = {}
-
-    dist = np.sqrt((ra_mem-ra_grid)**2 + ((dec_mem-dec_grid)*np.cos(dec_mem*np.pi/180.))**2)
-    idx = dist.argmin()
-
-    for listname, maskname in zip(VISIT_COLS, MASK_COLS):
-        visits_counts[listname] = float(mask[maskname][idx])
-
-    return visits_counts
 
 #####################
 # Writing to tables
 #####################
 
-def _upsert_masks(cur, gid, mask_type, masks):
-    cols = ', '.join(MASK_COLS)
-    phs  = ', '.join(['%s'] * len(MASK_COLS))
-    sets = ', '.join(f"{c} = EXCLUDED.{c}" for c in MASK_COLS)
 
-    cur.execute(f"""
-        INSERT INTO group_masks
-               (group_id, mask_type, updated_at, {cols})
-        VALUES (%s, %s, NOW(), {phs})
-        ON CONFLICT (group_id, mask_type) DO UPDATE SET
-            updated_at = NOW(),
-            {sets}
-    """, (gid, mask_type,
-          *[psycopg2.Binary(masks[col].astype(np.int16).tobytes()) for col in MASK_COLS]))
 
-def _insert_daily_visits(cur, date, member_id, v):
-    cols = ', '.join(VISIT_COLS)
-    phs  = ', '.join(['%s'] * len(VISIT_COLS))
-
-    cur.execute(f"""
-        INSERT INTO member_daily_visits
-               (time, member_id, {cols})
-        VALUES (%s, %s, {phs})
-    """, (date, member_id, *[v[b] for b in VISIT_COLS]))
-
-def _insert_member_totals(cur, date, member_id, v):
-    cols = ', '.join(VISIT_COLS)
-    phs  = ', '.join(['%s'] * len(VISIT_COLS))
-
-    cur.execute(f"""
-        INSERT INTO member_totals
-               (time, member_id, {cols})
-        VALUES (%s, %s, {phs})
-    """, (date, member_id, *[v[b] for b in VISIT_COLS]))
 
 #####################
 # Rubin services
@@ -844,12 +627,6 @@ def make_html_obs_plot(data):
 # Wrapper helper code
 #####################
 
-
-def set_up_db():
-    subprocess.run(["dropdb", DB_NAME])
-    subprocess.run(["createdb", DB_NAME])
-    subprocess.run(["psql", "-d", DB_NAME, "-f", "schema.sql"])
-    return
 
 def write(destinations, msg, at_line_start):
     lines = msg.split("\n")
