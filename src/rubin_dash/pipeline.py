@@ -20,9 +20,9 @@ import gc
 import time
 from typing import TYPE_CHECKING
 
-from rubin_dash.config import REFRESH_INTERVAL, simulation_dates, MEM_TEST_MODE
+from rubin_dash.config import REFRESH_INTERVAL, simulation_dates
 from rubin_dash.database import populate_database
-from rubin_dash.core import (
+from rubin_dash.displays import (
     TableData,
     TargetMap,
     TargetTimeSeries,
