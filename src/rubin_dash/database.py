@@ -21,7 +21,8 @@ import pandas as pd
 import healpy as hp
 import numpy as np
 import psycopg2
-from rubin_dash.utils import get_camera, get_metadata_rsv, remove_high_dec # WILL GET RID OF THIS!
+from rubin_dash.utils import remove_high_dec # WILL GET RID OF THIS!
+from rubin_dash.lsst import get_camera, get_metadata_rsv
 import subprocess
 from rubin_dash.config import DB_NAME
 

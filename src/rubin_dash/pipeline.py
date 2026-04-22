@@ -28,7 +28,7 @@ from rubin_dash.core import (
     TargetTimeSeries,
     ObservabilityData,
 )
-from rubin_dash.utils import rsv_service
+from rubin_dash.lsst import rsv_service
 
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
