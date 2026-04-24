@@ -1,25 +1,18 @@
 """
-displays.py: code to generate HTML tables and figures for webpage display.
+displays.py: Generate HTML tables and figures for webpage display.
+
+This module manages data preparation and HTML/Plotly figure generation for
+the dashboard. It provides classes for different visualization types that 
+wrap internal helper functions and coordinate with the database.
+
+Public API
+----------
+- ``TableData`` - Cumulative visits summary table data.
+- ``TargetMap`` - 2D visit coverage maps by filter band.
+- ``TargetTimeSeries`` - Time series visits progress tracking.
+- ``ObservabilityData`` - Future observability predictions.
 
 **Author:** Anna Ordog, for CanDIAPL
-
-Classes
--------
-BasePlot
-    Base class for plot formatting and display.
-QuietFilter
-    Logging filter to suppress noisy output from specific endpoints.
-Logger
-    Logging handler for writing to terminal and log file.
-TableData
-    Manages summary table data for display.
-TargetMap
-    Manages 2D visits coverage maps for groups of targets.
-TargetTimeSeries
-    Manages time series visits data for individual targets.
-ObservabilityData
-    Manages future observability predictions for targets.
-
 """
 import pandas as pd
 import numpy as np
@@ -35,8 +28,24 @@ BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
 VISIT_COLS = [f'{b}visits' for b in BANDS]
 
-def populate_table(cur):
+def _populate_table(cur):
+    """Query and format summary table data from user-specific database.
 
+    Fetches the latest cumulative visits for all targets organized by
+    group and member indices. Retrieves per-band visit counts and formats
+    data for HTML table generation.
+
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor with DictCursor factory.
+
+    Returns
+    -------
+    dict
+        Table data with keys: row_id, gr_name, ra, dec, gr_num, mem_num,
+        and per-band visit counts (u, g, r, i, z, y).
+    """
     cur.execute(f"""
         SELECT g.name_gr, g.group_id,
                m.member_id, m.ra_mem, m.dec_mem,
@@ -79,8 +88,22 @@ def populate_table(cur):
 
     return data
 
-def make_html_table(data):
+def _make_html_table(data):
+    """Format table data as HTML for web display.
 
+    Converts tabular data into an HTML table element with sortable columns.
+    Excludes grouping-related debug columns if VERBOSE is False.
+
+    Parameters
+    ----------
+    data : dict
+        Table data from _populate_table().
+
+    Returns
+    -------
+    str
+        HTML string containing a formatted table with headers and rows.
+    """
     df = pd.DataFrame(data, index=data['row_id'])
     df.index.name = "ID"
 
@@ -115,8 +138,26 @@ def make_html_table(data):
     html += "</tbody>\n</table>"
     return html
 
-def populate_2D_map(gid, cur):
+def _populate_2D_map(gid, cur):
+    """Query and format 2D visits map data from user-specific database.
 
+    Fetches group coordinates, mask grid and data (daily and total), and 
+    member coordinates for a target group. Prepares data for 2D heatmap 
+    visualization.
+
+    Parameters
+    ----------
+    gid : int
+        Group ID identifying the target group.
+    cur : psycopg2.cursor
+        Database cursor with DictCursor factory.
+
+    Returns
+    -------
+    dict
+        Map data with keys: ra_gr, dec_gr (group center), ra_grid/dec_grid, 
+        ra_mem/dec_mem (member positions), masks (daily and total visits).
+    """
     # Group-level data
     cur.execute("""
         SELECT ra_gr, dec_gr, ra_grid, dec_grid
@@ -160,8 +201,30 @@ def populate_2D_map(gid, cur):
 
     return data
 
-def make_html_visits_map(data, idx_mem, maptype):
+def _make_html_visits_map(data, idx_mem, maptype):
+    """Generate 2D visits map as HTML for web display.
 
+    Creates a Plotly figure with 6 subplots (one per filter band) showing 
+    visit count heatmaps for the area covering one group of targets. 
+    Overlays target group members and highlights the currently selected 
+    member, defaulting to the first member (mn=0) of the first group (gn=1) 
+    each time the webpage updates. Displays daily or cumulative coverage 
+    depending on user selection.
+
+    Parameters
+    ----------
+    data : dict
+        Map data from _populate_2D_map().
+    idx_mem : int
+        Member index within the group (0-based, used for highlighting).
+    maptype : str
+        Either 'daily' (today's visits) or 'total' (cumulative).
+
+    Returns
+    -------
+    str
+        HTML string with embedded Plotly figure (div and script tags).
+    """
     filter_names = [BANDS[0:3], BANDS[3:6]]
     mask_names = [MASK_COLS[0:3],MASK_COLS[3:6]]
     specs = [[{"type": "scatter"}]*3]*2
@@ -230,8 +293,27 @@ def make_html_visits_map(data, idx_mem, maptype):
     
     return fig_html
 
-def populate_times_series(gid, idx_mem, cur):
+def _populate_times_series(gid, idx_mem, cur):
+    """Query and format time series visit data from user-specific database.
 
+    Fetches daily and cumulative visit counts for a specific target (along 
+    with coordinates) over time for each filter band.
+
+    Parameters
+    ----------
+    gid : int
+        Group ID identifying the target group.
+    idx_mem : int
+        Member index within the group (0-based).
+    cur : psycopg2.cursor
+        Database cursor with DictCursor factory.
+
+    Returns
+    -------
+    dict
+        Time series data with keys: 'daily' and 'total' (DataFrames with
+        time and per-band visit counts), ra_mem/dec_mem (target position).
+    """
     # Daily time series data
     cols = ', '.join([f'v.{c}' for c in VISIT_COLS])
     cur.execute(f"""
@@ -246,7 +328,6 @@ def populate_times_series(gid, idx_mem, cur):
     data = {}
 
     data['daily'] = pd.DataFrame(cur.fetchall(), columns=['time'] + VISIT_COLS)
-    #print(time_df)
 
     # Cumulative time series data
     cols = ', '.join([f'v.{c}' for c in VISIT_COLS])
@@ -269,15 +350,26 @@ def populate_times_series(gid, idx_mem, cur):
     members = cur.fetchall()
     data['ra_mem']  = np.array([m['ra_mem']  for m in members])
     data['dec_mem'] = np.array([m['dec_mem'] for m in members])
-    #data['ra_mem']  = #np.array([m['ra_mem']  for m in members])
-    #data['dec_mem'] = #np.array([m['dec_mem'] for m in members])
-    #data[] = 
-    #data[] = 
 
     return data
 
-def make_html_visits_plot(data, maptype):
+def _make_html_visits_plot(data, maptype):
+    """Generate time series plot of visits over time as HTML for web display.
 
+    Creates a Plotly plot showing visit count vs. time for each filter band.
+
+    Parameters
+    ----------
+    data : dict
+        Time series data from _populate_times_series().
+    maptype : str
+        Either 'daily' (daily new visits) or 'total' (cumulative).
+
+    Returns
+    -------
+    str
+        HTML string with embedded Plotly figure (div and script tags).
+    """
     fig = make_subplots(rows=1, cols=1,specs=[[{"type": "scatter"}]])
     title = f"<b>RA = {data['ra_mem'][0]}&deg;, dec = {data['dec_mem'][0]}&deg;</b>"
     fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
@@ -314,8 +406,32 @@ def make_html_visits_plot(data, maptype):
 
     return fig_html
 
-def populate_observability(gid, idx_mem, cur, date):
+def _populate_observability(gid, idx_mem, cur, date):
+    """Compute and format observability forecast data.
 
+    Calculates target altitude/azimuth over a 30-day window from the current 
+    date, using the LSST Observatory location. Computes sunrise/sunset times 
+    and observable hours (el > 15 deg) for each night.
+
+    Parameters
+    ----------
+    gid : int
+        Group ID identifying the target group.
+    idx_mem : int
+        Member index within the group (0-based).
+    cur : psycopg2.cursor
+        Database cursor with DictCursor factory.
+    date : str or datetime
+        Reference date (typically today) for observability window.
+
+    Returns
+    -------
+    dict
+        Observability data with keys: ra/dec (target coords), az/el
+        (altitude/azimuth over 30 days), utc (time array), sunrise/sunset
+        (arrays of sunrise/sunset times), hours (observable hours per
+        night), days_utc (array of dates).
+    """
     data = {}
 
     # Extract the RA and dec from group and member indices:
@@ -393,8 +509,23 @@ def populate_observability(gid, idx_mem, cur, date):
 
     return data
 
-def make_html_obs_plot(data):
+def _make_html_obs_plot(data):
+    """Generate observability forecast visualization as HTML for web display.
 
+    Creates a 2-panel Plotly figure showing: observable hours per day 
+    over next 30 days, and target elevation vs. time with day/night and 
+    unobservable (el < 15 deg) regions shaded.
+
+    Parameters
+    ----------
+    data : dict
+        Observability data from _populate_observability().
+
+    Returns
+    -------
+    str
+        HTML string with embedded Plotly figure (div and script tags).
+    """
     fig = make_subplots(rows=2, cols=1, specs=[[{"type": "scatter"}]]*2)
     title = f"<b>RA = {data['ra']}&deg;, dec = {data['dec']}&deg;</b>"
     fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
@@ -523,10 +654,11 @@ class BasePlot:
         self.description = description
 
 class TableData:
-    """Class for cumulative visits summary table data.
+    """Container for cumulative visits summary table data.
     
-    Fetches and formats the summary table data from the database, showing
-    cumulative visits counts for each target member across all filter bands.
+    Stores table data including visit counts per filter band and target
+    coordinates. Data is fetched from the database and formatted by the
+    `make_html_table()` method for web display.
     
     Parameters
     ----------
@@ -542,26 +674,28 @@ class TableData:
 
     def __init__(self, cur, description: str = "Table data object"):
         self.description = description
-        self.data = populate_table(cur)
+        self.data = _populate_table(cur)
 
     def make_html_table(self):
-        """Generate HTML table for web display.
-        
+        """Format table data as HTML for web display.
+
+        Converts tabular data into an HTML table element with sortable columns.
+        Excludes grouping-related debug columns if VERBOSE is False.
+
         Returns
         -------
         str
-            HTML string containing a formatted table with column headers
-            and data rows. Debug columns hidden based on VERBOSE config.
+            HTML string containing a formatted table with headers and rows.
         """
-        return make_html_table(self.data)
+        return _make_html_table(self.data)
     
 
 class TargetMap:
-    """Class for 2D visit coverage maps by filter band.
+    """Container for 2D visit coverage map data by filter band.
     
-    Fetches grid and mask data for a target group and generates 2D maps
-    showing visits coverage in each of the six LSST filter bands. Displays
-    daily or cumulative coverage depending on user selection.
+    Stores grid coordinates, mask data (daily and cumulative), and target
+    group coordinates. Data is fetched from the database and visualized by
+    the `make_html_visits_map()` method for web display.
     
     Parameters
     ----------
@@ -579,32 +713,39 @@ class TargetMap:
 
     def __init__(self, gid, cur, description: str = "2D map object"):
         self.description = description
-        self.data = populate_2D_map(gid, cur)
+        self.data = _populate_2D_map(gid, cur)
 
     def make_html_visits_map(self, idx_mem, maptype):
-        """Generate 2D maps of visit coverage.
-        
+        """Generate 2D visits map as HTML for web display.
+
+        Creates a Plotly figure with 6 subplots (one per filter band) showing 
+        visit count heatmaps for the area covering one group of targets. 
+        Overlays target group members and highlights the currently selected 
+        member, defaulting to the first member (mn=0) of the first group (gn=1) 
+        each time the webpage updates. Displays daily or cumulative coverage 
+        depending on user selection.
+
         Parameters
         ----------
         idx_mem : int
-            Member index within the group (0-based).
+            Member index within the group (0-based, used for highlighting).
         maptype : str
-            Either 'daily' for today's visits or 'total' for cumulative visits.
-        
+            Either 'daily' (today's visits) or 'total' (cumulative).
+
         Returns
         -------
         str
-            HTML string with embedded Plotly figure showing 6 heatmaps
-            (one per filter band).
+            HTML string with embedded Plotly figure (div and script tags).
         """
-        return make_html_visits_map(self.data, idx_mem, maptype)
+        return _make_html_visits_map(self.data, idx_mem, maptype)
 
 
 class TargetTimeSeries:
-    """Class for time series visits progress data.
+    """Container for time series visits progress data.
     
-    Fetches historical visit data for a specific target and generates time 
-    series plots showing daily or cumulative visits versus time by filter band.
+    Stores historical daily and cumulative visit data for a target over
+    time, organized by filter band. Data is fetched from the database and
+    visualized by the `make_html_visits_plot()` method for web display.
     
     Parameters
     ----------
@@ -625,34 +766,36 @@ class TargetTimeSeries:
     def __init__(self, gid, idx_mem, cur, 
                  description: str = "Time series object"):
         self.description = description
-        self.data = populate_times_series(gid, idx_mem, cur)
+        self.data = _populate_times_series(gid, idx_mem, cur)
 
     def make_html_visits_plot(self, maptype):
-        """Generate time series plot of visit progress.
-        
+        """Generate time series plot of visits over time as HTML for web 
+        display.
+
+        Creates a Plotly plot showing visit count vs. time for each filter 
+        band.
+
         Parameters
         ----------
         maptype : str
-            Either 'daily' for daily visits or 'total' for cumulative visits.
-        
+            Either 'daily' (daily new visits) or 'total' (cumulative).
+
         Returns
         -------
         str
-            HTML string with embedded Plotly figure showing line traces for
-            each filter band.
+            HTML string with embedded Plotly figure (div and script tags).
         """
-        return make_html_visits_plot(self.data, maptype)
+        return _make_html_visits_plot(self.data, maptype)
 
 
 class ObservabilityData:
-    """Class for future observability predictions.
+    """Container for future observability predictions.
     
-    Computes and manages observability predictions for a target, including
-    elevation, azimuth, and observable hours based on Vera C. Rubin 
-    Observatyory location and sunrise/sunset times. Generates a plots showing: 
-     - target elevation over the next N days.
-     - number of observable hours over the next N days
-    Note: N is currently fixed at 30 - will make this more flexible. 
+    Stores computed observability data including altitude/azimuth,
+    sunrise/sunset times, and observable hours for a target based on Vera
+    C. Rubin Observatory location. Data is computed from input coordinates
+    and dates, and visualized by the `make_html_obs_plot()` method for web
+    display.
     
     Parameters
     ----------
@@ -676,16 +819,19 @@ class ObservabilityData:
     def __init__(self, gid, idx_mem, cur, date, 
                  description: str = "Observability data object"):
         self.description = description
-        self.data = populate_observability(gid, idx_mem, cur, date)
+        self.data = _populate_observability(gid, idx_mem, cur, date)
 
     def make_html_obs_plot(self):
-        """Generate observability forecast plot.
-        
+        """Generate observability forecast visualization as HTML for 
+        web display.
+
+        Creates a 2-panel Plotly figure showing: observable hours per day 
+        over next 30 days, and target elevation vs. time with day/night and 
+        unobservable (el < 15 deg) regions shaded.
+
         Returns
         -------
         str
-            HTML string with embedded Plotly figure showing a 2-panel plot:
-            top panel displays observable hours per day, bottom panel shows
-            target elevation over the next 30 days with day/night shading.
+            HTML string with embedded Plotly figure (div and script tags).
         """
-        return make_html_obs_plot(self.data)
+        return _make_html_obs_plot(self.data)

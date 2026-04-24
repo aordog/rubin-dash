@@ -1,6 +1,14 @@
 """
 app.py: Flask application factory and route definitions.
 
+This module defines the Flask application factory and all HTTP endpoints.
+It coordinates with the background data pipeline to display the data table and 
+summary plots, allowing for updates based on user interactions.
+
+**Thread Safety Note:** This module accesses a shared `SharedState` object 
+managed by the background data loop. The `snapshot()` method provides 
+thread-safe read access to the current dashboard state.
+
 **Author:** Anna Ordog, for CanDIAPL
 """
 
@@ -12,7 +20,7 @@ from typing import TYPE_CHECKING
 import psycopg2.extras
 from flask import Flask, jsonify, render_template, request
 
-from rubin_dash.pipeline import reclaim_memory
+from rubin_dash.pipeline import _reclaim_memory
 from rubin_dash.displays import TargetMap, TargetTimeSeries, ObservabilityData
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
@@ -27,15 +35,27 @@ def create_app(
 ) -> Flask:
     """Build and return the configured Flask application.
 
+    Initializes a Flask application with all routes for the dashboard. The app 
+    provides endpoints for viewing data visualizations, interacting with the
+    visualizations, and polling for updates from the background data pipeline.
+
     Parameters
     ----------
     shared_state : SharedState
-        Thread-safe state shared with the background data loop.
-    conn : psycopg2 connection
-        Kept open for the lifetime of the process.
-    template_folder, static_folder
-        Override the default Flask search paths (useful when
-        ``templates/`` and ``static/`` live outside the package).
+        Thread-safe state shared with the background data loop. Provides access
+        to current data snapshots, progress information, and update tracking.
+    conn : psycopg2.extensions.connection
+        PostgreSQL database connection, kept open for the lifetime of the 
+        process. Used by route handlers to query the user-specific database.
+    template_folder : str | Path | None, optional
+        Specify the Flask template search path.
+    static_folder : str | Path | None, optional
+        Specify the Flask static file search path.
+
+    Returns
+    -------
+    Flask
+        Configured Flask application with routes registered, ready to serve.
     """
     kwargs: dict = {}
     if template_folder is not None:
@@ -46,24 +66,63 @@ def create_app(
     app = Flask(__name__, **kwargs)
 
     # helpers local to the app:
-    def _render_plots(gn: int, mn: int, maptype: str, date):
-        """Open a short-lived cursor, generate both plots, reclaim."""
+    def _render_plots(gn: int, mn: int, maptype: str, date) -> dict:
+        """Generate visualization plots for a chosen target.
+
+        Creates the interactive HTML visualizations: 
+        - 2D visits map for the region surrounding the target
+        - Visits time series for the target
+        - Future observability of the target. 
+        Uses a short-lived cursor to minimize database connection overhead, 
+        then reclaims memory.
+
+        Parameters
+        ----------
+        gn : int
+            Group number (target group identifier).
+        mn : int
+            Member number (target member identifier within the group).
+        maptype : str
+            Type of visits map to generate ("daily" or "total").
+        date : str
+            Date string for calculating the future observability.
+
+        Returns
+        -------
+        dict
+            Flask JSON response containing:
+            - "status": "ok"
+            - "fig1_html": HTML rendering of the visits map
+            - "fig2_html": HTML rendering of the visits time series
+            - "fig3_html": HTML rendering of the observability plot
+        """
         local_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
-            fig1_html = TargetMap(gn, local_cur).make_html_visits_map(mn, maptype)
-            fig2_html = TargetTimeSeries(gn, mn, local_cur).make_html_visits_plot(maptype)
-            fig3_html = ObservabilityData(gn, mn, local_cur, date).make_html_obs_plot()
+            fig1_html=TargetMap(gn,local_cur).make_html_visits_map(mn,maptype)
+            fig2_html=TargetTimeSeries(gn,mn,local_cur).make_html_visits_plot(maptype)
+            fig3_html=ObservabilityData(gn,mn,local_cur,date).make_html_obs_plot()
         finally:
             local_cur.close()
         result = jsonify({"status": "ok", "fig1_html": fig1_html, 
                                           "fig2_html": fig2_html, 
                                           "fig3_html": fig3_html})
-        reclaim_memory()
+        _reclaim_memory()
         return result
 
     # routes:
     @app.route("/")
-    def home():
+    def home() -> str:
+        """Serve the main dashboard page.
+
+        Retrieves the current dashboard state and renders the templates/index 
+        page with the latest visualizations, data table, and countdown to next 
+        update. 
+
+        Returns
+        -------
+        str
+            HTML content of the rendered dashboard page.
+        """
         snap = shared_state.snapshot()
         if snap["table"] is None:
             return (
@@ -82,7 +141,29 @@ def create_app(
         )
 
     @app.route("/row_clicked", methods=["POST"])
-    def row_clicked():
+    def row_clicked() -> dict:
+        """Handle row selection from the table of targets.
+
+        Processes a user click on a row in the table and re-renders the
+        visualization plots for the selected target. Extracts group and member
+        identifiers from the request and generates fresh plots.
+
+        Request JSON
+        --------
+        index : int
+            Row index in the table (for logging purposes).
+        gn : int or str
+            Group number of the selected target.
+        mn : int or str
+            Member number of the selected target.
+        maptype : str, optional
+            Type of map to display (default: "daily").
+
+        Returns
+        -------
+        dict
+            JSON response with plot HTML from ``_render_plots()``.
+        """
         data    = request.get_json()
         gn      = int(data["gn"])
         mn      = int(data["mn"])
@@ -95,7 +176,29 @@ def create_app(
         return _render_plots(gn, mn, maptype, date)
 
     @app.route("/maptype_clicked", methods=["POST"])
-    def maptype_clicked():
+    def maptype_clicked() -> dict:
+        """Handle map type selection from the visualization area.
+
+        Processes a user toggling of the map type ("daily" or "total") and 
+        re-renders the visits map and time series while keeping the same target 
+        selected.
+
+        Request JSON
+        --------
+        gn : int or str
+            Group number of the target.
+        mn : int or str
+            Member number of the target.
+        maptype : str
+            New map type and time series to display ("daily" or "total").
+        index : int, optional
+            Row index (for logging, default: 0).
+
+        Returns
+        -------
+        dict
+            JSON response with plot HTML from ``_render_plots()``.
+        """
         data    = request.get_json()
         gn      = int(data["gn"])
         mn      = int(data["mn"])
@@ -108,12 +211,47 @@ def create_app(
         return _render_plots(gn, mn, maptype, date)
 
     @app.route("/check_update")
-    def check_update():
+    def check_update() -> dict:
+        """Check for data updates.
+
+        Polling endpoint for client-side scripts to detect when new data are
+        available. Clients compare the returned version with their cached 
+        version to determine if a page refresh is needed. Currently this
+        refresh happens every `REFRESH_INTERVAL` as defined in the config.py
+        file, but in the final version this will poll for a new date to provide
+        daily updates from the Rubin database.
+
+        Returns
+        -------
+        dict
+            JSON response with:
+            - "version": Current dashboard data version identifier.
+        """
         snap = shared_state.snapshot()
         return jsonify({"version": snap["version"]})
 
     @app.route("/next_update")
-    def next_update():
+    def next_update() -> dict:
+        """Provide update status and timing information.
+
+        Polling endpoint that returns information about the next scheduled data
+        update and the current state of any in-progress update. Used by the
+        client to display progress information and update the countdown timer.
+        Currently this timer counts down the `REFRESH_INTERVAL` defined in the 
+        config.py file, but in the final version this will be a countdown to
+        the following date.
+
+        Returns
+        -------
+        dict
+            JSON response with:
+            - "next_update": Unix timestamp of the next scheduled update.
+            - "server_time": Current server time for synchronization.
+            - "updating": Boolean indicating if an update is in progress.
+            - "progress": Numeric progress value for update progress bar.
+            - "progress_msg": Detailed progress message string.
+            - "cycle_number": Current update cycle counter.
+        """
         snap = shared_state.snapshot()
         return jsonify({
             "next_update":  snap["next_update"],
