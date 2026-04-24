@@ -1,10 +1,11 @@
 """
-config.py: Configuration file for Rubin Dashboard.
+config.py: Configuration parameters for the Rubin Dashboard.
 
-This config file contains the basic parameters for running the dashboard app. 
+Defines user inputs, server settings, simulation parameters, and stress
+testing configuration. Constants are organized by category with inline
+comments explaining their purpose.
 
 **Author:** Anna Ordog, for CanDIAPL
-
 """
 
 from datetime import datetime, timedelta
@@ -30,12 +31,3 @@ VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
 # Stress testing
 MEM_TEST_MODE = True  # Turn on memory stress testing (simulated clicks)
 STRESS_TEST_CLICK_INTERVAL = 3  # Seconds between automated clicks
-
-# Make the list of simulated dates:
-def simulation_dates() -> list[str]:
-    """Return the full list of YYYY-MM-DD strings for the sim window."""
-    n_days = (SIM_END - SIM_START).days + 1
-    return [
-        (SIM_START + timedelta(days=i)).strftime("%Y-%m-%d")
-        for i in range(n_days)
-    ]

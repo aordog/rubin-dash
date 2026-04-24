@@ -1,17 +1,17 @@
 """
-database.py: code for LSST and local databases.
+database.py: User-specific Database setup and population for target tracking.
 
-Main Functions
----------
-set_up_db
-    Create the database using the defined schema.
-initialize_tracking
-    Load list of targets into the database and get LSST camera information.
-populate_database
-    Process visits and mask data for all target groups.
+This module manages all database operations for the dashboard, including 
+schema creation for the user-specific database, initialization of the database
+with target organization, and populating the database with daily updates.
+
+Public API
+----------
+- ``set_up_db`` - Create and initialize the database schema.
+- ``initialize_tracking`` - Load and organize targets and setup for a user.
+- ``populate_database`` - Process visits and mask data for all groups.
 
 **Author:** Anna Ordog, for CanDIAPL
-
 """
 
 import pandas as pd
@@ -28,7 +28,30 @@ MASK_COLS = [f'{b}mask' for b in BANDS]
 VISIT_COLS = [f'{b}visits' for b in BANDS]
 
 
-def read_csv_file(file_in, declim):
+def _read_csv_file(file_in, declim):
+    """Read target catalog from CSV file with declination filtering.
+
+    Parses a formatted catalog file (e.g., NED query results) and extracts 
+    RA and Dec coordinates, limiting targets to the LSST declination limit
+    defined by INITIAL_OFFSET in config.py to discard targets the user may
+    have included that will not be observable.
+    TO DO: include warning for user stating not all their sources are being
+    tracked.
+
+    Parameters
+    ----------
+    file_in : str
+        Path to input catalog file with pipe-delimited format.
+        TO DO: make this more flexible!
+    declim : float
+        Declination limit in degrees. Targets with dec > declim are
+        excluded from the returned list.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        (ra_list, dec_list) — Arrays of RA and Dec coordinates (degrees).
+    """
 
     with open(file_in, 'r') as f:
         lines = f.readlines()
@@ -47,7 +70,30 @@ def read_csv_file(file_in, declim):
     return remove_high_dec(df['RA'].values.astype(float), 
                            df['DEC'].values.astype(float), declim)
 
-def group_targets(ra_list, dec_list, nside):
+def _group_targets(ra_list, dec_list, nside):
+    """Group targets spatially using HEALPix grid.
+
+    Organizes targets into spatial groups based on HEALPix tessellation. 
+    Each group corresponds to a HEALPix pixel and contains all targets 
+    falling within that pixel.
+
+    Parameters
+    ----------
+    ra_list : np.ndarray
+        Array of right ascension values (degrees).
+    dec_list : np.ndarray
+        Array of declination values (degrees).
+    nside : int
+        HEALPix nside parameter controlling pixel/grouping size.
+
+    Returns
+    -------
+    list of dict
+        Each dict contains:
+        - 'name_gr': Group identifier string
+        - 'ra_gr', 'dec_gr': Group center coordinates
+        - 'ra_mem', 'dec_mem': Arrays of member target coordinates
+    """
 
     pixel_ids = hp.ang2pix(nside, ra_list, dec_list, lonlat=True)
     idx_filled = np.unique(pixel_ids)
@@ -64,15 +110,31 @@ def group_targets(ra_list, dec_list, nside):
 
     return groups
 
-def setup_targets(conn, user_id, list_grouped):
-    """Populate groups + members. Run once."""
+def _setup_targets(conn, user_id, list_grouped):
+    """Populate database with target groups and members.
+
+    Inserts target group data and individual target members into the 'groups' 
+    and 'members' database tables. Creates spatial grids for each group 
+    using _add_mask_grid(), which are used in 2D visits map computations.
+
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Database connection for insert operations.
+    user_id : int
+        User ID to associate with all target groups.
+    list_grouped : list of dict
+        List of grouped targets from _group_targets().
+    """
 
     cur = conn.cursor()
 
     for group in list_grouped:
 
         # Make the grids centred on each group for the masks:
-        ra_grid, dec_grid = add_mask_grid(group['ra_gr'], group['dec_gr'])
+        ra_grid, dec_grid = _add_mask_grid(
+            group['ra_gr'], group['dec_gr']
+        )
 
         # Add group info to the 'groups' table, returning the group ID:
         cur.execute("""
@@ -98,7 +160,26 @@ def setup_targets(conn, user_id, list_grouped):
 
     return
 
-def add_mask_grid(pointing_ra, pointing_dec):
+def _add_mask_grid(pointing_ra, pointing_dec):
+    """Create a spatial grid for 2D visits map computation for each group.
+
+    Generates a regular grid of RA/Dec coordinates centered on a group's 
+    pointing position. Grid spacing is 1 arcminute with a 2.5-degree radius, 
+    suitable for nside=16 grouping.
+    TO DO: look into flexibility around this!
+
+    Parameters
+    ----------
+    pointing_ra : float
+        RA of group center (degrees).
+    pointing_dec : float
+        Dec of group center (degrees).
+
+    Returns
+    -------
+    tuple of np.ndarray
+        (ra_grid, dec_grid) - Flattened arrays of grid coordinates.
+    """
 
     samp=0.0166667
     radius = 2.5 # should work well for nside=16 grouping
@@ -117,10 +198,28 @@ def add_mask_grid(pointing_ra, pointing_dec):
 
     return ra_grid, dec_grid
 
-def compute_daily_masks(visits_use: dict,
-                        camera,
-                        ra_grid: np.ndarray, 
-                        dec_grid: np.ndarray):
+def _compute_daily_masks(visits_use, camera, ra_grid, dec_grid):
+    """Compute visit masks for all bands/filters on the spatial grid.
+
+    For each band, counts how many visits from the latest observations 
+    occurred at each grid point using the LSST camera footprint.
+
+    Parameters
+    ----------
+    visits_use : dict
+        Visit data with keys: 'ra', 'dec', 'band', 'rot'
+    camera : rubin_scheduler.utils.LsstCameraFootprint
+        Camera footprint object for mask calculations.
+    ra_grid : np.ndarray
+        RA coordinates of grid points (degrees).
+    dec_grid : np.ndarray
+        Dec coordinates of grid points (degrees).
+
+    Returns
+    -------
+    dict
+        Keys are mask column names; values are visit count arrays.
+    """
 
     latest = {}
 
@@ -139,6 +238,22 @@ def compute_daily_masks(visits_use: dict,
     return latest
 
 def _insert_daily_visits(cur, date, member_id, v):
+    """Insert daily visit counts for a member into the database.
+
+    Stores visit count data for one target member on a specific date
+    into the member_daily_visits table.
+
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor for executing the insert.
+    date : str
+        Date string (YYYY-MM-DD) for the observations.
+    member_id : int
+        Database ID of the target member.
+    v : dict
+        Visit counts dictionary with keys for each band.
+    """
     cols = ', '.join(VISIT_COLS)
     phs  = ', '.join(['%s'] * len(VISIT_COLS))
 
@@ -149,6 +264,22 @@ def _insert_daily_visits(cur, date, member_id, v):
     """, (date, member_id, *[v[b] for b in VISIT_COLS]))
 
 def _insert_member_totals(cur, date, member_id, v):
+    """Insert cumulative visit counts for a member into the database.
+
+    Stores cumulative (total) visit count data for one target member
+    into the member_totals table.
+
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor for executing the insert.
+    date : str
+        Date string (YYYY-MM-DD) for the observations.
+    member_id : int
+        Database ID of the target member.
+    v : dict
+        Visit counts dictionary with keys for each band.
+    """
     cols = ', '.join(VISIT_COLS)
     phs  = ', '.join(['%s'] * len(VISIT_COLS))
 
@@ -159,6 +290,27 @@ def _insert_member_totals(cur, date, member_id, v):
     """, (date, member_id, *[v[b] for b in VISIT_COLS]))
 
 def _upsert_masks(cur, gid, mask_type, masks):
+    """Insert or update mask data for a group in the database.
+
+    Inserts new mask data or updates existing masks for a group. Handles 
+    both daily ('latest') and cumulative ('total') mask types. If the masks
+    already exist in the database from previous days, they are overwritten
+    (ON CONFLICT). While a time series of daily visits for each target is
+    stored (_insert_daily_visits and _insert_member_totals), the 2D masks 
+    stored for total and daily are ONLY the latest.
+
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor for executing the upsert.
+    gid : int
+        Group ID for which to store masks.
+    mask_type : str
+        Type of mask being stored: 'latest' for daily or 'total' for 
+        cumulative.
+    masks : dict
+        Mask data dictionary with arrays for each band.
+    """
     cols = ', '.join(MASK_COLS)
     phs  = ', '.join(['%s'] * len(MASK_COLS))
     sets = ', '.join(f"{c} = EXCLUDED.{c}" for c in MASK_COLS)
@@ -173,7 +325,30 @@ def _upsert_masks(cur, gid, mask_type, masks):
     """, (gid, mask_type,
           *[psycopg2.Binary(masks[col].astype(np.int16).tobytes()) for col in MASK_COLS]))
 
-def compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
+def _compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
+    """Count visits for a group member target from a mask grid.
+
+    Finds the closest mask grid point to a target member and returns
+    the visit counts for that grid point across all bands.
+
+    Parameters
+    ----------
+    ra_mem : float
+        Member target RA (degrees).
+    dec_mem : float
+        Member target Dec (degrees).
+    ra_grid : np.ndarray
+        RA coordinates of grid points (degrees).
+    dec_grid : np.ndarray
+        Dec coordinates of grid points (degrees).
+    mask : dict
+        Mask dictionary with visit count arrays for each band.
+
+    Returns
+    -------
+    dict
+        Visit counts for each band at the nearest grid point.
+    """
 
     visits_counts = {}
 
@@ -185,13 +360,33 @@ def compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
 
     return visits_counts
 
-def process_group(gid, date, visits, camera, conn):
+def _process_group(gid, date, visits, camera, conn):
+    """Process one group: compute masks and update database.
 
-    """Load one group from DB, compute masks, save → return (memory freed)."""
+    Loads a group's spatial grid and existing cumulative masks from the
+    database using _read_grid_and_mask(), computes new daily masks from
+    visit data using _compute_daily_masks(), accumulates into totals, and
+    saves both to the database using _upsert_masks(). Also computes and
+    saves visit counts for each member target using _compute_visits(),
+    _insert_member_totals(), and _insert_daily_visits().
+
+    Parameters
+    ----------
+    gid : int
+        Group ID to process.
+    date : str
+        Date string (YYYY-MM-DD) for the observation epoch.
+    visits : dict
+        Visit data with keys: 'ra', 'dec', 'band', 'rot'
+    camera : rubin_scheduler.utils.LsstCameraFootprint
+        Camera footprint for mask computation.
+    conn : psycopg2.connection
+        Database connection for loading and saving data.
+    """
 
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    ra_grid, dec_grid, mask_row = read_grid_and_mask(gid, cur)
+    ra_grid, dec_grid, mask_row = _read_grid_and_mask(gid, cur)
 
     if mask_row and mask_row[MASK_COLS[0]] is not None:
         totals = {col: np.frombuffer(mask_row[col], dtype=np.int16).copy() for col in MASK_COLS}
@@ -199,7 +394,9 @@ def process_group(gid, date, visits, camera, conn):
         totals = {col: np.zeros(len(ra_grid), dtype=np.int16) for col in MASK_COLS}
 
     # Compute today's masks:
-    latest = compute_daily_masks(visits, camera, ra_grid, dec_grid)
+    latest = _compute_daily_masks(
+        visits, camera, ra_grid, dec_grid
+    )
     latest = {col: latest[col].astype(np.int16) for col in MASK_COLS}
 
     # Add today's mask to the totals:
@@ -218,8 +415,14 @@ def process_group(gid, date, visits, camera, conn):
     
     # Compute total and daily visits:
     for mem in cur.fetchall():
-        total_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, totals)
-        daily_v = compute_visits(mem['ra_mem'], mem['dec_mem'], ra_grid, dec_grid, latest)
+        total_v = _compute_visits(
+            mem['ra_mem'], mem['dec_mem'],
+            ra_grid, dec_grid, totals
+        )
+        daily_v = _compute_visits(
+            mem['ra_mem'], mem['dec_mem'],
+            ra_grid, dec_grid, latest
+        )
         
         # Save daily and total visits
         _insert_member_totals(cur, date, mem['member_id'], total_v)
@@ -229,7 +432,25 @@ def process_group(gid, date, visits, camera, conn):
     
     return
 
-def read_grid_and_mask(gid, cur):
+def _read_grid_and_mask(gid, cur):
+    """Load spatial grid and masks for a group from database.
+
+    Retrieves the pre-computed spatial grid for a group and loads the
+    existing cumulative mask (or None if first observation).
+
+    Parameters
+    ----------
+    gid : int
+        Group ID to load data for.
+    cur : psycopg2.cursor (DictCursor)
+        Database cursor for queries.
+
+    Returns
+    -------
+    tuple
+        (ra_grid, dec_grid, mask_row) where grid arrays are 1D numpy
+        arrays and mask_row is a cursor row or None.
+    """
 
     # Load grids needed for making the mask:
     cur.execute(
@@ -251,6 +472,17 @@ def read_grid_and_mask(gid, cur):
 
 
 def set_up_db():
+    """Create and initialize the database schema for the user-specific table.
+
+    Drops any existing database with the name specified in config, creates a 
+    new one, and loads the schema from schema.sql.
+
+    Notes
+    -----
+    This is a destructive operation. Use only for initialization.
+    TO DO: for now this is being removed each time for a fresh start each time
+    during testing. Will need to revisit how this is handled for final version.
+    """
     subprocess.run(["dropdb", DB_NAME])
     subprocess.run(["createdb", DB_NAME])
     subprocess.run(["psql", "-d", DB_NAME, "-f", "schema.sql"])
@@ -258,13 +490,13 @@ def set_up_db():
 
 
 def initialize_tracking(user_id, file_in, declim):
-    """Initialize database and load targets for tracking.
+    """Initialize user-specific database and load targets for tracking.
     
     Performs one-time setup of the Rubin Dashboard application by:
-    - Reading the target list from a file
-    - Grouping targets spatially using HEALPix
+    - Reading the target list from a file using _read_csv_file()
+    - Grouping targets spatially using _group_targets()
     - Establishing database connection
-    - Loading target data if not already present
+    - Loading target data if not already present using _setup_targets()
     - Loading LSST camera footprint information
     
     Parameters
@@ -275,9 +507,10 @@ def initialize_tracking(user_id, file_in, declim):
         Path to input file containing target RA, Dec coordinates.
         Expected to be a formatted catalog (e.g., NED query results).
     declim : float
-        Declination limit in degrees. Targets with dec > declim are excluded
-        from tracking. This can reduce the database size if user accidentally
-        inputs targets outside of the Rubin observability range.
+        Declination limit in degrees. Targets with dec > declim are
+        excluded from tracking. This can reduce the database size if
+        user accidentally inputs targets outside of the Rubin
+        observability range.
     
     Returns
     -------
@@ -303,7 +536,7 @@ def initialize_tracking(user_id, file_in, declim):
     """
 
     # Read in the target list:
-    ra_t_list, dec_t_list = read_csv_file(file_in, declim)
+    ra_t_list, dec_t_list = _read_csv_file(file_in, declim)
 
     print('====================================================')
     print('')
@@ -311,7 +544,7 @@ def initialize_tracking(user_id, file_in, declim):
     print('')
 
     # Group the targets from the list
-    list_grouped = group_targets(ra_t_list, dec_t_list, 16)
+    list_grouped = _group_targets(ra_t_list, dec_t_list, 16)
 
     # Open a connection to database
     conn = psycopg2.connect(dbname="lsst_database")
@@ -325,7 +558,7 @@ def initialize_tracking(user_id, file_in, declim):
         print("Targets already loaded for this user. Skipping.")
     else:
         # Load the grouped targets into the tables
-        setup_targets(conn, user_id, list_grouped)
+        _setup_targets(conn, user_id, list_grouped)
 
     # Get the camera information
     camera = get_camera()
@@ -335,15 +568,14 @@ def initialize_tracking(user_id, file_in, declim):
     return camera, conn, cur
 
 
-def populate_database(conn, cur, camera, user_id, visits, date,
-                      state_lock, state):
+def populate_database(conn, cur, camera, user_id, visits, date, shared_state):
     """Process and store visits/mask data for all target groups.
-    
-    Iterates through all target groups for a user and computes visits masks
-    based on the Rubin Schedule Viewer data. Updates apply both daily and
-    cumulative masks to the database, and updates shared state for progress
-    reporting to the web interface.
-    
+
+    Iterates through all target groups for a user and computes 2D visit
+    masks based on the Rubin Schedule Viewer data using _process_group().
+    Updates both daily and cumulative masks in the user-specific database,
+    and updates shared state for progress reporting to the web interface.
+
     Parameters
     ----------
     conn : psycopg2.connection
@@ -351,32 +583,24 @@ def populate_database(conn, cur, camera, user_id, visits, date,
     cur : psycopg2.cursor (DictCursor)
         Database cursor for queries.
     camera : rubin_scheduler.utils.LsstCameraFootprint
-        Rubin LSST camera footprint object for computing visits masks.
+        Rubin LSST camera footprint object for computing visit masks.
     user_id : int
         User ID identifying which groups to process.
     visits : pandas.DataFrame
-        Visit schedule data from Rubin Schedule Viewer containing ra, dec,
-        execution_status, and obs_id columns.
+        Visit schedule data from Rubin Schedule Viewer containing ra,
+        dec, execution_status, and obs_id columns.
     date : str
         Date string (YYYY-MM-DD) for which to process data.
-    state_lock : threading.Lock
-        Lock for thread-safe access to shared state dictionary.
-    state : dict
-        Shared state dictionary containing:
-        - 'progress': float in [0, 1] fraction of processing complete
-        - 'progress_msg': str status message for display
-    
+    shared_state : SharedState
+        Thread-safe container for dashboard state. Progress updates are
+        written atomically via the write() method.
+
     Notes
     -----
     - Designed to run in a background thread
-    - Updates shared state atomically using state_lock
+    - Updates progress and progress_msg in shared state atomically
     - Processes groups in database order (by group_id)
     - Each group processes its member targets and computes masks
-    
-    Calls
-    --------
-    utils.process_group : Handles individual group processing
-    utils.get_metadata_rsv : Fetches visit metadata from schedule
     """
 
     # Access the groups table, specifying ordering by group_id:
@@ -392,10 +616,11 @@ def populate_database(conn, cur, camera, user_id, visits, date,
         visits_use = get_metadata_rsv(visits, row['ra_gr'], row['dec_gr'])
 
         # Calculate the masks and visits at each target:
-        process_group(row['group_id'], date, visits_use, camera, conn)
+        _process_group(row['group_id'], date, visits_use, camera, conn)
 
-        with state_lock:
-            state["progress"] = (i + 1) / n_groups
-            state["progress_msg"] = f"UPDATING... processing group {i+1}/{n_groups}"
+        shared_state.write(
+            progress=(i + 1) / n_groups,
+            progress_msg=f"UPDATING... processing group {i+1}/{n_groups}",
+        )
 
     return

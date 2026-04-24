@@ -1,4 +1,13 @@
-"""Entry point: ``python -m rubin_dash``."""
+"""
+Dashboard application entry point and orchestration.
+
+Entry point for ``python -m rubin_dash``. Orchestrates full startup
+of the dashboard application including database initialization, Flask
+app creation, background data processing pipeline, resource monitoring,
+and optional stress testing. Manages all background threads and cleanup.
+
+**Author:** Anna Ordog
+"""
 
 import logging
 import sys
@@ -31,6 +40,48 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def main() -> None:
+    """Initialize and run the Rubin Dashboard application.
+
+    Orchestrates the complete startup sequence for the dashboard:
+
+    1. Sets up logging and output directory with timestamped files
+    2. Initializes PostgreSQL database with user's target catalog
+    3. Creates Flask application with shared state management
+    4. Spawns background threads:
+       - data_loop: periodic database updates with observation data
+       - monitor_resources: CPU and memory profiling (writes CSV)
+       - stress_test: automated interaction testing (if MEM_TEST_MODE enabled)
+    5. Opens web browser to dashboard URL
+    6. Runs Flask server (blocking)
+    7. On shutdown: saves monitoring plots and closes log file
+
+    The dashboard runs as a multi-threaded application:
+    - Main thread: Flask web server
+    - Background threads: data pipeline, resource monitoring, stress testing
+
+    Log output is simultaneously written to terminal and timestamped log
+    file via Logger multi-destination handler.
+
+    Configuration Parameters
+    --------
+    All parameters read from rubin_dash.config:
+    - PORT: Flask server port
+    - DEFAULT_USER_ID: Database user identifier
+    - INITIAL_OFFSET: Declination limit for target filtering
+    - QUERY_FILE: Path to target catalog
+    - MEM_TEST_MODE: Enable/disable automated stress testing
+
+    Raises
+    ------
+    Exception
+        Any errors during database setup or Flask initialization will
+        propagate. Resource monitoring thread is cleaned up in finally block.
+
+    Notes
+    -----
+    This function blocks indefinitely while Flask server is running.
+    Keyboard interrupt (Ctrl+C) triggers shutdown sequence.
+    """
     # ── Output / logging ────────────────────────────────────────
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     run_dir = OUTPUT_BASE / timestamp

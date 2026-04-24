@@ -1,23 +1,19 @@
 """
-monitoring.py: code to monitor memory and CPU usage.
+monitoring.py: Monitor CPU, memory, and user interactions for dashboard 
+performance.
 
-Classes
--------
-QuietFilter
-    Logging filter to suppress noisy output from specific endpoints.
-Logger
-    Logging handler for writing to terminal and log file.
- 
-Main Functions
--------
-monitor_resources:
-    Logs resource usage for each run with or without the stress_test running.
-stress_test: 
-    Stress test performs automated clicks based on cycle pattern, runs as a 
-    background thread if MEM_TEST_MODE is enabled.
+This module provides resource monitoring, interactive stress testing for
+performance evaluation, and multi-destination logging utilities.
+
+Public API
+----------
+- ``QuietFilter`` - Suppress verbose Flask endpoint logging.
+- ``Logger`` - Multi-destination logger with timestamp prefixing.
+- ``monitor_resources`` - Log CPU and memory usage to file.
+- ``monitoring_plots`` - Plot the results from `monitor_resources`
+- ``stress_test`` - Perform automated clicks on dashboard for back-end testing.
 
 **Author:** Anna Ordog, for CanDIAPL
-
 """
 
 import time
@@ -34,15 +30,29 @@ import os, psutil
 import numpy as np
 import pandas as pd
 
+from rubin_dash.config import PORT, STRESS_TEST_CLICK_INTERVAL
+
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
 
 
-def fetch_valid_rows(cur) -> list[dict]:
-    """Query database to get all valid (index, gn, mn) tuples.
-    
-    Replicates the group/member ordering logic so that mn (mem_idx) 
-    matches exactly what populate_table() computes.
+def _fetch_valid_rows(cur) -> list[dict]:
+    """Query database to get all valid row state tuples.
+
+    Fetches group and member IDs from database, replicating the exact
+    group/member ordering logic used by displays.populate_table() to
+    ensure row indices (index, gn, mn) match the table rows.
+
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor with DictCursor factory.
+
+    Returns
+    -------
+    list[dict]
+        List of dicts with keys 'index' (row number), 'gn' (group ID),
+        'mn' (member index within group).
     """
     cur.execute("""
         SELECT g.group_id, m.member_id
@@ -68,9 +78,25 @@ def fetch_valid_rows(cur) -> list[dict]:
         })
     return rows
 
+def _get_click_action(cycle: int) -> str:
+    """Determine click action for a given cycle number.
 
-def get_click_action(cycle: int) -> str:
-    """Return the click action for a given cycle number (1-indexed)."""
+    Maps cycle numbers to actions in a repeating 4-cycle pattern:
+    - cycles 1, 3 mod 4: no clicks
+    - cycle 2 mod 4: row clicks
+    - cycle 4 mod 4: maptype clicks
+    TO DO: might implement other test sequences later
+
+    Parameters
+    ----------
+    cycle : int
+        Cycle number (1-indexed).
+
+    Returns
+    -------
+    str
+        Action string: one of 'no clicks', 'row clicks', 'map-type clicks'.
+    """
     cycle_mod = ((cycle - 1) % 4) + 1
     if cycle_mod == 1:
         return "no clicks"
@@ -81,9 +107,19 @@ def get_click_action(cycle: int) -> str:
     elif cycle_mod == 4:
         return "map-type clicks"
 
+def _perform_row_click(base_url: str, row: dict) -> None:
+    """Send HTTP POST request for row click to dashboard server.
 
-def perform_row_click(base_url: str, row: dict) -> None:
-    """Perform a row click on the server with the specified row."""
+    Sends a row_clicked request with the specified row's index, group,
+    and member index.
+
+    Parameters
+    ----------
+    base_url : str
+        Base URL of the dashboard server.
+    row : dict
+        Row state dict from _fetch_valid_rows() with keys 'index', 'gn', 'mn'.
+    """
     try:
         payload = {
             "index": row["index"],
@@ -95,9 +131,24 @@ def perform_row_click(base_url: str, row: dict) -> None:
     except Exception as e:
         print(f"Row click error: {e}")
 
+def _perform_maptype_click(base_url: str, maptype: str, gn: str,
+                           mn: str) -> None:
+    """Send HTTP POST request for maptype click to dashboard server.
 
-def perform_maptype_click(base_url: str, maptype: str, gn: str, mn: str) -> None:
-    """Perform a maptype click on the server with consistent row selection."""
+    Sends a maptype_clicked request to toggle between 'daily' and 'total'
+    visualizations for a specified group and member.
+
+    Parameters
+    ----------
+    base_url : str
+        Base URL of the dashboard server.
+    maptype : str
+        Map type selection: 'daily' or 'total'.
+    gn : str
+        Group ID as string.
+    mn : str
+        Member index as string.
+    """
     try:
         payload = {
             "index": 0,
@@ -109,8 +160,264 @@ def perform_maptype_click(base_url: str, maptype: str, gn: str, mn: str) -> None
     except Exception as e:
         print(f"Maptype click error: {e}")
 
-def monitoring_plots(dir_files, file_time, ymax_mb=800):
+def _read_log(dir_files, file_time, search_string):
+    """Extract timestamps from log file matching search string.
 
+    Parses a log file and returns a list of timestamps extracted from
+    lines containing the specified search string.
+
+    Parameters
+    ----------
+    dir_files : str
+        Base directory containing the log file subdirectory.
+    file_time : str
+        Subdirectory and filename prefix for the log file.
+    search_string : str
+        String to search for in log lines.
+
+    Returns
+    -------
+    list[str]
+        List of timestamp strings extracted from matching lines.
+    """
+    ts = []
+    with open(f"{dir_files}/{file_time}/log_{file_time}.txt", 'r') as file:
+        for line in file:
+            if search_string in line:
+                ts.append(line.strip().split()[0][1::]+" "+line.strip().split()[1][0:-1])
+
+    return ts
+
+def _write(destinations, msg, at_line_start):
+    """Write message to multiple destinations with timestamp prefixing.
+
+    Splits message by newlines and writes each line to all destinations.
+    Prepends timestamps to lines that start at the beginning of a new line.
+
+    Parameters
+    ----------
+    destinations : tuple
+        File-like objects to write to (e.g., sys.stdout, open files).
+    msg : str
+        Message to write.
+    at_line_start : bool
+        Whether output position is at the start of a new line.
+
+    Returns
+    -------
+    bool
+        Updated at_line_start flag indicating final output position.
+    """
+    lines = msg.split("\n")
+
+    for i, line in enumerate(lines):
+        if i > 0:
+            for dest in destinations:
+                dest.write("\n")
+            at_line_start = True
+
+        if line:
+            if at_line_start:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                line = f"[{timestamp}] {line}"
+                at_line_start = False
+            for dest in destinations:
+                dest.write(line)
+                dest.flush()
+
+    return at_line_start
+
+
+class QuietFilter(logging.Filter):
+    """Logging filter to suppress verbose Flask endpoint messages.
+    
+    Filters out logging records from endpoints that generate high-cadence
+    messages not useful for debugging or monitoring to keep log files and 
+    terminal output readable.
+    
+    Attributes
+    ----------
+    NOISY : set
+        Collection of endpoint paths whose log messages should be suppressed.
+    """
+
+    NOISY = {'/check_update', '/next_update'}
+
+    def filter(self, record):
+        """Check if a log record should be allowed.
+        
+        Parameters
+        ----------
+        record : logging.LogRecord
+            The log record to filter.
+        
+        Returns
+        -------
+        bool
+            False if the record contains a message from a noisy endpoint,
+            True otherwise.
+        """
+        return not any(path in record.getMessage() for path in self.NOISY)
+
+class Logger:
+    """Multi-destination logging handler with timestamp prefixing.
+    
+    Writes log messages to multiple output streams (terminal, file) with
+    timestamps. Compatible with sys.stdout/sys.stderr redirection.
+    
+    Parameters
+    ----------
+    *destinations : file-like
+        Variable number of output streams to write to (e.g., sys.stdout,
+        open file objects).
+    
+    Attributes
+    ----------
+    destinations : tuple
+        Collection of output streams.
+    at_line_start : bool
+        Flag tracking start of new line (for timestamp insertion).
+    """
+    
+    def __init__(self, *destinations):
+        self.destinations = destinations
+        self.at_line_start = True
+
+    def write(self, msg):
+        """Write message to multiple destinations with timestamp prefixing.
+
+        Splits message by newlines and writes each line to all destinations.
+        Prepends timestamps to lines that start at the beginning of a new line.
+
+        Parameters
+        ----------
+        msg : str
+            Message to write.
+
+        Returns
+        -------
+        bool
+            Updated at_line_start flag indicating final output position.
+        """
+        self.at_line_start = _write(self.destinations, msg,
+                                    self.at_line_start)
+
+    def flush(self):
+        """Flush all output streams."""
+        for dest in self.destinations:
+            dest.flush()
+
+def monitor_resources(log_path, interval=5, stop_event=None):
+    """Log CPU and memory usage at regular intervals.
+
+    Monitors the current process and writes CPU percentage and memory
+    usage (in MB) to a CSV file at specified intervals until stop_event
+    is set. Used for performance profiling during dashboard operation.
+
+    Parameters
+    ----------
+    log_path : str
+        Path to output CSV file for resource data.
+    interval : float, optional
+        Sampling interval in seconds. Default is 5.
+    stop_event : threading.Event
+        Event to signal monitoring to stop. If not set, monitoring runs
+        indefinitely.
+    """
+    process = psutil.Process(os.getpid())
+
+    with open(log_path, "w") as f:
+        f.write("timestamp,cpu_percent,memory_mb\n")
+
+        while not stop_event.is_set():
+            cpu = process.cpu_percent(interval=interval)
+            mem = process.memory_info().rss / (1024 * 1024)  # bytes → MB
+            ts  = time.strftime("%Y-%m-%d %H:%M:%S")
+
+            f.write(f"{ts},{cpu:.1f},{mem:.1f}\n")
+            f.flush()
+
+def stress_test(shared_state: "SharedState", cur) -> None:
+    """Perform automated dashboard interactions for backend performance 
+    testing.
+
+    Monitors cycle number and performs automated clicks based on a repeating 
+    4-cycle pattern. Different click types test different interaction modes:
+    - Cycles 1, 3 mod 4: No clicks
+    - Cycle 2 mod 4: Random row clicks (tests row selection)
+    - Cycle 4 mod 4: Maptype clicks (tests daily/total map toggle)
+
+    Clicks are spaced by STRESS_TEST_CLICK_INTERVAL seconds during their
+    active cycle.
+
+    Parameters
+    ----------
+    shared_state : SharedState
+        Shared state containing current cycle_number.
+    cur : psycopg2.cursor
+        Database cursor to fetch valid row states for clicking.
+    """
+    # Fetch valid rows once at startup
+    valid_rows = _fetch_valid_rows(cur)
+    if not valid_rows:
+        print("Warning: No valid rows available for stress testing")
+        return
+    
+    base_url = f"http://localhost:{PORT}"
+    last_cycle = 0
+    current_maptype = "daily"
+    fixed_row = valid_rows[0]  # Use first row for maptype clicks
+    last_click_time = 0
+    active_cycle = 0  # Track which cycle we're performing clicks for
+    
+    while True:
+        snap = shared_state.snapshot()
+        current_cycle = snap.get("cycle_number", 0)
+        now = time.time()
+        
+        # When cycle changes, print the action and reset timing
+        if current_cycle != last_cycle and current_cycle > 0:
+            action = _get_click_action(current_cycle)
+            print(f"stress test for cycle {current_cycle}: {action}")
+            last_cycle = current_cycle
+            active_cycle = current_cycle
+            last_click_time = now
+        
+        # Only perform clicks if we're still in the active cycle
+        cycle_mod = ((active_cycle - 1) % 4) + 1 if active_cycle > 0 else 0
+        
+        if active_cycle > 0 and current_cycle == active_cycle and (now - last_click_time) >= STRESS_TEST_CLICK_INTERVAL:
+            if cycle_mod == 2:
+                # Row clicks with random row each time
+                row = random.choice(valid_rows)
+                _perform_row_click(base_url, row)
+            elif cycle_mod == 4:
+                # Maptype clicks, alternating maptype but keeping same row
+                current_maptype = "total" if current_maptype == "daily" else "daily"
+                _perform_maptype_click(base_url, current_maptype,
+                                      str(fixed_row["gn"]),
+                                      str(fixed_row["mn"]))
+            
+            last_click_time = now
+        
+        time.sleep(0.1)
+
+def monitoring_plots(dir_files, file_time, ymax_mb=800):
+    """Generate performance monitoring plots from resource data.
+
+    Creates a plot showing memory usage, CPU usage, and annotated event
+    timings (data updates, map toggle, row clicks) from logged monitoring
+    data. Saves output as PDF and PNG files.
+
+    Parameters
+    ----------
+    dir_files : str
+        Base directory containing monitoring data subdirectories.
+    file_time : str
+        Subdirectory and filename prefix for data and output files.
+    ymax_mb : float, optional
+        Maximum memory axis limit in MB. Default is 800.
+    """
     time_support()
 
     data = pd.read_csv(f"{dir_files}/{file_time}/resources_{file_time}.csv")
@@ -119,9 +426,9 @@ def monitoring_plots(dir_files, file_time, ymax_mb=800):
     cpu_percent = np.array(data['cpu_percent'])
     memory_mb   = np.array(data['memory_mb'])
 
-    ts_update  = read_log(dir_files, file_time, "Updated data for")
-    ts_maptype = read_log(dir_files, file_time, "Map type")
-    ts_rowpick = read_log(dir_files, file_time, "Row")
+    ts_update  = _read_log(dir_files, file_time, "Updated data for")
+    ts_maptype = _read_log(dir_files, file_time, "Map type")
+    ts_rowpick = _read_log(dir_files, file_time, "Row")
 
     fig, ax = plt.subplots(1,1, figsize=(10,5))
     ax.plot(timestamp, memory_mb, color='k', label='memory')
@@ -159,183 +466,3 @@ def monitoring_plots(dir_files, file_time, ymax_mb=800):
     plt.savefig(f"{dir_files}/{file_time}/{file_time}.png")
 
     return
-
-def read_log(dir_files, file_time, search_string):
-
-    ts = []
-    with open(f"{dir_files}/{file_time}/log_{file_time}.txt", 'r') as file:
-        for line in file:
-            if search_string in line:
-                ts.append(line.strip().split()[0][1::]+" "+line.strip().split()[1][0:-1])
-
-    return ts
-
-def write(destinations, msg, at_line_start):
-    lines = msg.split("\n")
-
-    for i, line in enumerate(lines):
-        if i > 0:
-            for dest in destinations:
-                dest.write("\n")
-            at_line_start = True
-
-        if line:
-            if at_line_start:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                line = f"[{timestamp}] {line}"
-                at_line_start = False
-            for dest in destinations:
-                dest.write(line)
-                dest.flush()
-
-    return at_line_start
-
-class QuietFilter(logging.Filter):
-    """Logging filter to suppress verbose Flask endpoint messages.
-    
-    Filters out logging records from endpoints that generate high-cadence
-    messages not useful for debugging or monitoring to keep log files and 
-    terminal output readable.
-    
-    Attributes
-    ----------
-    NOISY : set
-        Collection of endpoint paths whose log messages should be suppressed.
-    """
-
-    NOISY = {'/check_update', '/next_update'}
-
-    def filter(self, record):
-        """Check if a log record should be allowed.
-        
-        Parameters
-        ----------
-        record : logging.LogRecord
-            The log record to filter.
-        
-        Returns
-        -------
-        bool
-            False if the record contains a message from a noisy endpoint,
-            True otherwise.
-        """
-        return not any(path in record.getMessage() for path in self.NOISY)
-
-
-class Logger:
-    """Multi-destination logging handler with timestamp prefixing.
-    
-    Writes log messages to multiple output streams (terminal, file) with
-    timestamps. Compatible with sys.stdout/sys.stderr redirection.
-    
-    Parameters
-    ----------
-    *destinations : file-like
-        Variable number of output streams to write to (e.g., sys.stdout,
-        open file objects).
-    
-    Attributes
-    ----------
-    destinations : tuple
-        Collection of output streams.
-    at_line_start : bool
-        Flag tracking start of new line (for timestamp insertion).
-    """
-    
-    def __init__(self, *destinations):
-        self.destinations = destinations
-        self.at_line_start = True
-
-    def write(self, msg):
-        """Write to all destinations with timestamp prefixing.
-        
-        Parameters
-        ----------
-        msg : str
-            The message to write.
-        """
-        self.at_line_start = write(self.destinations, msg, self.at_line_start)
-
-    def flush(self):
-        """Flush all output streams."""
-        for dest in self.destinations:
-            dest.flush()
-
-def monitor_resources(log_path, interval=5, stop_event=None):
-    """
-    Logs CPU and memory usage to a file at regular intervals.
-    Runs until stop_event is set.
-    """
-    process = psutil.Process(os.getpid())
-
-    with open(log_path, "w") as f:
-        f.write("timestamp,cpu_percent,memory_mb\n")
-
-        while not stop_event.is_set():
-            cpu = process.cpu_percent(interval=interval)
-            mem = process.memory_info().rss / (1024 * 1024)  # bytes → MB
-            ts  = time.strftime("%Y-%m-%d %H:%M:%S")
-
-            f.write(f"{ts},{cpu:.1f},{mem:.1f}\n")
-            f.flush()
-
-def stress_test(shared_state: "SharedState", cur) -> None:
-    """
-    Monitor cycle_number and perform automated clicks based on cycle pattern.
-    
-    Clicks repeat every STRESS_TEST_CLICK_INTERVAL seconds for the duration of a click cycle.
-    - Row clicks (cycle 2 mod 4): random row each time (from database)
-    - Maptype clicks (cycle 4 mod 4): alternate maptype, keep same row
-    - No clicks (cycles 1 & 3 mod 4)
-    
-    Parameters
-    ----------
-    shared_state : SharedState
-        Shared state containing cycle_number.
-    cur : psycopg2 cursor
-        Database cursor to fetch valid rows.
-    """
-    from rubin_dash.config import PORT, STRESS_TEST_CLICK_INTERVAL
-    
-    # Fetch valid rows once at startup
-    valid_rows = fetch_valid_rows(cur)
-    if not valid_rows:
-        print("Warning: No valid rows available for stress testing")
-        return
-    
-    base_url = f"http://localhost:{PORT}"
-    last_cycle = 0
-    current_maptype = "daily"
-    fixed_row = valid_rows[0]  # Use first row for maptype clicks
-    last_click_time = 0
-    active_cycle = 0  # Track which cycle we're performing clicks for
-    
-    while True:
-        snap = shared_state.snapshot()
-        current_cycle = snap.get("cycle_number", 0)
-        now = time.time()
-        
-        # When cycle changes, print the action and reset timing
-        if current_cycle != last_cycle and current_cycle > 0:
-            action = get_click_action(current_cycle)
-            print(f"stress test for cycle {current_cycle}: {action}")
-            last_cycle = current_cycle
-            active_cycle = current_cycle
-            last_click_time = now
-        
-        # Only perform clicks if we're still in the active cycle
-        cycle_mod = ((active_cycle - 1) % 4) + 1 if active_cycle > 0 else 0
-        
-        if active_cycle > 0 and current_cycle == active_cycle and (now - last_click_time) >= STRESS_TEST_CLICK_INTERVAL:
-            if cycle_mod == 2:
-                # Row clicks with random row each time
-                row = random.choice(valid_rows)
-                perform_row_click(base_url, row)
-            elif cycle_mod == 4:
-                # Maptype clicks, alternating maptype but keeping same row
-                current_maptype = "total" if current_maptype == "daily" else "daily"
-                perform_maptype_click(base_url, current_maptype, str(fixed_row["gn"]), str(fixed_row["mn"]))
-            
-            last_click_time = now
-        
-        time.sleep(0.1)
