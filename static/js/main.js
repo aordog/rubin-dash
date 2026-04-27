@@ -63,6 +63,9 @@ rows.forEach((row, index) => {
                 container.innerHTML = data[id.replace('-content', '_html')];
                 activateScripts(container);
             });
+            
+            // Reattach observability plot click handler
+            setTimeout(() => attachObsPlotClickHandler(), 100);
         })
         .catch(err => console.error('Fetch error:', err));
     });
@@ -210,3 +213,70 @@ document.querySelectorAll('.sortable-table thead th').forEach((header, index) =>
         header.classList.add(isAscending ? 'sort-desc' : 'sort-asc');
     });
 });
+
+
+// ---- Observability plot: handle clicks on top panel (hours observable) ----
+function attachObsPlotClickHandler() {
+    const fig3Container = document.getElementById('fig3-content');
+    const plotDiv = fig3Container?.querySelector('.plotly-graph-div');
+    
+    if (!plotDiv) {
+        return;
+    }
+    
+    plotDiv.on('plotly_click', (eventData) => {
+        // Extract the clicked point's x-value (date)
+        const point = eventData.points[0];
+        if (!point) {
+            return;
+        }
+        
+        // Only respond to clicks on the top panel (row 1, col 1)
+        // Plotly subplot axes are objects with _name property
+        // For a 2-row, 1-col subplot: row 1 = xaxis,yaxis and row 2 = xaxis2,yaxis2
+        const xaxisName = point.xaxis._name;
+        const yaxisName = point.yaxis._name;
+        
+        if (xaxisName !== 'xaxis' || yaxisName !== 'yaxis') {
+            return;
+        }
+        
+        const selectedDate = point.x;  // ISO date string from Plotly
+        
+        // Send update request to server
+        fetch('/obs_plot_update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                gn: currentGn,
+                mn: currentMn,
+                selected_date: selectedDate,
+                window_days: 5
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                const container = document.getElementById('fig3-content');
+                const existingPlot = container.querySelector('.plotly-graph-div');
+                if (existingPlot) {
+                    Plotly.purge(existingPlot);
+                }
+                container.innerHTML = data.fig3_html;
+                activateScripts(container);
+                
+                // Reattach click handler to new plot
+                setTimeout(() => attachObsPlotClickHandler(), 100);
+            }
+        })
+        .catch(error => console.error('Error updating observability plot:', error));
+    });
+}
+
+// Attach handler when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    attachObsPlotClickHandler();
+});
+
+// Also try immediately in case DOMContentLoaded already fired
+attachObsPlotClickHandler();

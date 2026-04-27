@@ -210,6 +210,52 @@ def create_app(
         )
         return _render_plots(gn, mn, maptype, date)
 
+    @app.route("/obs_plot_update", methods=["POST"])
+    def obs_plot_update() -> dict:
+        """Handle observability plot updates based on user click.
+
+        Processes a user click on the top panel of the observability plot and 
+        regenerates the bottom panel zoomed to a time window starting on the
+        selected date.
+
+        Request JSON
+        --------
+        gn : int or str
+            Group number of the target.
+        mn : int or str
+            Member number of the target.
+        selected_date : str
+            ISO format date string (e.g., '2025-04-27').
+        window_days : int, optional
+            Number of days to show after selected_date (default: 5).
+
+        Returns
+        -------
+        dict
+            JSON response with:
+            - "status": "ok"
+            - "fig3_html": HTML rendering of the updated observability plot
+        """
+        data = request.get_json()
+        gn = int(data["gn"])
+        mn = int(data["mn"])
+        selected_date = data.get("selected_date")
+        window_days = int(data.get("window_days", 5))
+        date = shared_state.snapshot()["date"]
+        
+        local_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            fig3_html = ObservabilityData(gn, mn, local_cur, date).make_html_obs_plot(
+                selected_date=selected_date, 
+                window_days=window_days
+            )
+        finally:
+            local_cur.close()
+        
+        result = jsonify({"status": "ok", "fig3_html": fig3_html})
+        _reclaim_memory()
+        return result
+
     @app.route("/check_update")
     def check_update() -> dict:
         """Check for data updates.

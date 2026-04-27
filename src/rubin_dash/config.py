@@ -23,11 +23,11 @@ DB_NAME = "lsst_database"
 OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
 
 # Simulated LSST survey (for testing)
-REFRESH_INTERVAL: int = 20 # refresh rate for simulated iterations
+REFRESH_INTERVAL: int = 30 # refresh rate for simulated iterations
 SIM_START = datetime(2025, 8, 20)  # simulated days start
 SIM_END   = datetime(2025, 11, 30) # simulated days end
 VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
 
 # Stress testing
-MEM_TEST_MODE = True  # Turn on memory stress testing (simulated clicks)
+MEM_TEST_MODE = False  # Turn on memory stress testing (simulated clicks)
 STRESS_TEST_CLICK_INTERVAL = 3  # Seconds between automated clicks
