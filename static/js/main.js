@@ -1,21 +1,56 @@
-// ============================================================
-//  main.js – all client-side logic
-// ============================================================
+/**
+ * main.js – Application initialization, state, utilities, and polling
+ * 
+ * This module handles:
+ * - Server data initialization
+ * - Client-side state management
+ * - Auto-reload on version change
+ * - Countdown and progress bar updates
+ * - Dynamic HTML script activation
+ * 
+ * Event handlers for user interactions are in handlers.js
+ */
 
+// ============================================================
+// INITIALIZATION: Load server data from hidden data element
+// ============================================================
 const serverDataEl = document.getElementById('server-data');
 const SERVER_DATA = {
     version:          Number(serverDataEl.dataset.version),
     countdownSeconds: Number(serverDataEl.dataset.countdown)
 };
 
-// ---- Client-side state ----
-let currentIndex   = 0;
+// ============================================================
+// STATE: Shared client-side state for selected target and view
+// ============================================================
+
+/** Currently selected row index in the table */
+let currentIndex = 0;
+
+/** Current map view mode: 'daily' or 'total' (cumulative) */
 let currentMaptype = 'daily';
-let currentGn      = '1';  
-let currentMn      = '0';  
+
+/** Group number (gn) of selected target (1-based)*/
+let currentGn = '1';
+
+/** Member number (mn) of selected target (0-based) */
+let currentMn = '0';
 
 
-// ---- Helper: execute <script> tags inside injected HTML ----
+// ============================================================
+// UTILITY: Helpers for working with dynamic content
+// ============================================================
+
+/**
+ * Execute <script> tags inside dynamically injected HTML.
+ * 
+ * When fetching HTML from the server and inserting it with innerHTML,
+ * script tags don't execute automatically. This function finds all script
+ * tags in a container and re-executes them so that Plotly.js and other
+ * initialization code runs properly.
+ * 
+ * @param {HTMLElement} container - Element containing injected HTML
+ */
 function activateScripts(container) {
     container.querySelectorAll('script').forEach(oldScript => {
         const newScript = document.createElement('script');
@@ -24,85 +59,76 @@ function activateScripts(container) {
     });
 }
 
-
-// ---- Table row clicks ----
-const rows = document.querySelectorAll('.data-table tbody tr');
-
-rows.forEach((row, index) => {
-    row.classList.add('clickable');
-    row.addEventListener('click', () => {
-        rows.forEach(r => r.classList.remove('selected'));
-        row.classList.add('selected');
-        currentIndex = index;
-        currentGn = row.dataset.gn;
-        currentMn = row.dataset.mn;
-
-
-        // Pull metadata from the data- attributes
-        const rowMeta = {
-            index:   currentIndex,
-            maptype: currentMaptype,
-            gn:      currentGn,
-            mn:      currentMn
-        };
-
-        fetch('/row_clicked', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(rowMeta)
-        })
-        .then(res => res.json())
-        .then(data => {
-            // Before overwriting innerHTML, purge the old figure:
-            ['fig1-content', 'fig2-content', 'fig3-content'].forEach(id => {
-                const container = document.getElementById(id);
-                const existingPlot = container.querySelector('.plotly-graph-div');
-                if (existingPlot) {
-                    Plotly.purge(existingPlot);  // ← releases Plotly's internal references
-                }
-                container.innerHTML = data[id.replace('-content', '_html')];
-                activateScripts(container);
-            });
-            
-            // Reattach observability plot click handler
-            setTimeout(() => attachObsPlotClickHandler(), 100);
-        })
-        .catch(err => console.error('Fetch error:', err));
-    });
-});
+/**
+ * Update the heading for Figure 1 based on the current map type.
+ * The heading changes to reflect whether showing daily or cumulative visits.
+ */
+function updateFig1Heading() {
+    const headings = {
+        daily: 'Daily visits',
+        total: 'Cumulative visits to date'
+    };
+    document.getElementById('fig1-heading').textContent = headings[currentMaptype];
+}
 
 
-// ---- Auto-reload on new version ----
+// ============================================================
+// AUTO-RELOAD: Monitor server version and reload if changed
+// ============================================================
+
 const loadedVersion = SERVER_DATA.version;
 
+/**
+ * Check if server has a new version and reload if so.
+ * 
+ * This ensures users always have the latest UI code without manual refresh.
+ * Polls every 2 seconds.
+ */
 setInterval(async () => {
-    const resp = await fetch('/check_update');
-    const data = await resp.json();
-    if (data.version > loadedVersion) {
-        location.reload();
+    try {
+        const resp = await fetch('/check_update');
+        const data = await resp.json();
+        if (data.version > loadedVersion) {
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error checking for updates:', error);
     }
 }, 2000);
 
 
-// ---- Countdown + progress bar ----
+// ============================================================
+// COUNTDOWN & PROGRESS BAR: Update UI with refresh timing
+// ============================================================
+
+/** Seconds remaining until next data update */
 let remaining = SERVER_DATA.countdownSeconds;
-let updating  = false;
-let progress  = 0;
+
+/** Whether server is currently processing (updating data) */
+let updating = false;
+
+/** Progress percentage (0-1) for current update operation */
+let progress = 0;
+
+/** Status message to display during update (e.g., "Fetching data...") */
 let progressMsg = '';
 
-const T_REFRESH = SERVER_DATA.countdownSeconds;
-
+/**
+ * Update countdown display and progress bar.
+ * When updating == true, shows progress bar and status message.
+ * When updating == false, shows seconds until next update (counts down).
+ */
 function updateCountdown() {
-    const el    = document.getElementById('countdown-value');
-    const fill  = document.getElementById('progress-fill');
+    const el = document.getElementById('countdown-value');
+    const fill = document.getElementById('progress-fill');
     const track = document.querySelector('.progress-track');
 
     if (updating) {
-        track.style.display  = 'block';
-        el.textContent       = progressMsg || 'Processing...';
-        fill.style.width     = Math.round(progress * 100) + '%';
+        track.style.display = 'block';
+        el.textContent = progressMsg || 'Processing...';
+        fill.style.width = Math.round(progress * 100) + '%';
     } else {
-        track.style.display  = 'none';
+        track.style.display = 'none';
         if (remaining > 0) {
             el.textContent = 'Next update in ' + Math.ceil(remaining) + 's';
             remaining -= 1;
@@ -112,171 +138,30 @@ function updateCountdown() {
     }
 }
 
+/**
+ * Fetch latest update status from server.
+ * 
+ * Updates the global state variables: updating, progress, progressMsg, remaining
+ */
 function refreshCountdown() {
     fetch('/next_update')
         .then(r => r.json())
         .then(data => {
-            updating    = data.updating;
-            progress    = data.progress    || 0;
+            updating = data.updating;
+            progress = data.progress || 0;
             progressMsg = data.progress_msg || '';
             if (!updating) {
                 remaining = Math.max(0, data.next_update - data.server_time);
             }
-        });
+        })
+        .catch(err => console.error('Error refreshing countdown:', err));
 }
 
+// Initialize countdown on page load
 updateCountdown();
+
+// Update countdown and refresh server status every 1 second
 setInterval(() => {
     updateCountdown();
     refreshCountdown();
 }, 1000);
-
-
-// ---- Map type toggle ----
-const maptypeHeadings = {
-    daily: 'Daily visits',
-    total: 'Cumulative visits to date'
-};
-
-function updateFig1Heading() {
-    document.getElementById('fig1-heading').textContent =
-        maptypeHeadings[currentMaptype];
-}
-
-function sendMapType(maptype) {
-    currentMaptype = maptype;
-    updateFig1Heading();
-
-    document.querySelectorAll('.maptype-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.maptype === maptype);
-    });
-
-    fetch('/maptype_clicked', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            maptype: currentMaptype,
-            index:   currentIndex,
-            gn:      currentGn,   
-            mn:      currentMn    
-
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        ['fig1-content', 'fig2-content'].forEach(id => {
-            const container = document.getElementById(id);
-            container.innerHTML = data[id.replace('-content', '_html')];
-            activateScripts(container);
-        });
-    })
-    .catch(error => console.error('Error:', error));
-}
-
-// ---- Table sorting (vanilla JS, no jQuery) ----
-document.querySelectorAll('.sortable-table thead th').forEach((header, index) => {
-    header.style.cursor = 'pointer';
-    header.addEventListener('click', () => {
-        const table = header.closest('table');
-        const tbody = table.querySelector('tbody');
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        
-        // Determine sort direction (ascending or descending)
-        const isAscending = header.classList.contains('sort-asc');
-        
-        // Remove sort classes from all headers
-        table.querySelectorAll('thead th').forEach(th => {
-            th.classList.remove('sort-asc', 'sort-desc');
-        });
-        
-        // Sort rows
-        rows.sort((a, b) => {
-            const aCell = a.children[index].textContent.trim();
-            const bCell = b.children[index].textContent.trim();
-            
-            // Try numeric sort first
-            const aNum = parseFloat(aCell);
-            const bNum = parseFloat(bCell);
-            
-            if (!isNaN(aNum) && !isNaN(bNum)) {
-                return isAscending ? bNum - aNum : aNum - bNum;
-            }
-            
-            // Fall back to alphabetic sort
-            return isAscending ? bCell.localeCompare(aCell) : aCell.localeCompare(bCell);
-        });
-        
-        // Re-render rows
-        rows.forEach(row => tbody.appendChild(row));
-        
-        // Add sort indicator to current header
-        header.classList.add(isAscending ? 'sort-desc' : 'sort-asc');
-    });
-});
-
-
-// ---- Observability plot: handle clicks on top panel (hours observable) ----
-function attachObsPlotClickHandler() {
-    const fig3Container = document.getElementById('fig3-content');
-    const plotDiv = fig3Container?.querySelector('.plotly-graph-div');
-    
-    if (!plotDiv) {
-        return;
-    }
-    
-    plotDiv.on('plotly_click', (eventData) => {
-        // Extract the clicked point's x-value (date)
-        const point = eventData.points[0];
-        if (!point) {
-            return;
-        }
-        
-        // Only respond to clicks on the top panel (row 1, col 1)
-        // Plotly subplot axes are objects with _name property
-        // For a 2-row, 1-col subplot: row 1 = xaxis,yaxis and row 2 = xaxis2,yaxis2
-        const xaxisName = point.xaxis._name;
-        const yaxisName = point.yaxis._name;
-        
-        if (xaxisName !== 'xaxis' || yaxisName !== 'yaxis') {
-            return;
-        }
-        
-        const selectedDate = point.x;  // ISO date string from Plotly
-        
-        // Send update request to server
-        fetch('/obs_plot_update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                gn: currentGn,
-                mn: currentMn,
-                selected_date: selectedDate,
-                window_days: 5
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                const container = document.getElementById('fig3-content');
-                const existingPlot = container.querySelector('.plotly-graph-div');
-                if (existingPlot) {
-                    Plotly.purge(existingPlot);
-                }
-                container.innerHTML = data.fig3_html;
-                activateScripts(container);
-                
-                // Reattach click handler to new plot
-                setTimeout(() => attachObsPlotClickHandler(), 100);
-            }
-        })
-        .catch(error => console.error('Error updating observability plot:', error));
-    });
-}
-
-// Attach handler when page loads
-document.addEventListener('DOMContentLoaded', () => {
-    attachObsPlotClickHandler();
-});
-
-// Also try immediately in case DOMContentLoaded already fired
-attachObsPlotClickHandler();

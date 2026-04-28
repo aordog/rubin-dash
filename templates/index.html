@@ -73,7 +73,12 @@
         data-countdown="{{ countdown_seconds }}"
         hidden>
     </div>
+    
+    <!-- Load main.js first for state and utilities -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- Load handlers.js second for event listeners -->
+    <script src="{{ url_for('static', filename='js/handlers.js') }}"></script>
 
 </body>
 </html>
