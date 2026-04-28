@@ -99,7 +99,7 @@ def create_app(
         local_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
             fig1_html=TargetMap(gn,local_cur).make_html_visits_map(mn,maptype)
-            fig2_html=TargetTimeSeries(gn,mn,local_cur).make_html_visits_plot(maptype)
+            fig2_html=TargetTimeSeries(gn,mn,local_cur).make_html_visits_plot(mn,maptype)
             fig3_html=ObservabilityData(gn,mn,local_cur,date).make_html_obs_plot()
         finally:
             local_cur.close()

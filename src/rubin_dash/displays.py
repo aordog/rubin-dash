@@ -234,7 +234,7 @@ def _make_html_visits_map(data, idx_mem, maptype):
                         specs = specs,
                         vertical_spacing=0.1,
                         horizontal_spacing=0.01)
-    title = f"<b>RA = {data['ra_mem'][0]}&deg;, dec = {data['dec_mem'][0]}&deg;</b>"
+    title = f"<b>RA = {data['ra_mem'][idx_mem]}&deg;, dec = {data['dec_mem'][idx_mem]}&deg;</b>"
     fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
 
     if maptype == 'daily':
@@ -366,7 +366,7 @@ def _populate_times_series(gid, idx_mem, cur):
 
     return data
 
-def _make_html_visits_plot(data, maptype):
+def _make_html_visits_plot(data, idx_mem, maptype):
     """Generate time series plot of visits over time as HTML for web display.
 
     Creates a Plotly plot showing visit count vs. time for each filter band.
@@ -384,7 +384,7 @@ def _make_html_visits_plot(data, maptype):
         HTML string with embedded Plotly figure (div and script tags).
     """
     fig = make_subplots(rows=1, cols=1,specs=[[{"type": "scatter"}]])
-    title = f"<b>RA = {data['ra_mem'][0]}&deg;, dec = {data['dec_mem'][0]}&deg;</b>"
+    title = f"<b>RA = {data['ra_mem'][idx_mem]}&deg;, dec = {data['dec_mem'][idx_mem]}&deg;</b>"
     fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
 
     colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
@@ -860,7 +860,7 @@ class TargetTimeSeries:
         self.description = description
         self.data = _populate_times_series(gid, idx_mem, cur)
 
-    def make_html_visits_plot(self, maptype):
+    def make_html_visits_plot(self, idx_mem, maptype):
         """Generate time series plot of visits over time as HTML for web 
         display.
 
@@ -877,7 +877,7 @@ class TargetTimeSeries:
         str
             HTML string with embedded Plotly figure (div and script tags).
         """
-        return _make_html_visits_plot(self.data, maptype)
+        return _make_html_visits_plot(self.data, idx_mem, maptype)
 
 
 class ObservabilityData:

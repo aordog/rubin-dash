@@ -1,10 +1,28 @@
-"""rubin-dash: interactive survey-progress dashboard for Rubin LSST."""
+"""
+Rubin Dashboard - interactive survey-progress dashboard for Rubin LSST.
+
+A Flask-based dashboard for tracking observation progress and target coverage 
+during LSST survey observations (simulated for now). Displays visit counts, 
+coverage, time series, and observability forecasts for user-selected targets.
+
+To run the dashboard:
+    python -m rubin_dash
+
+The dashboard will automatically:
+- Initialize a PostgreSQL database with user's target catalog
+- Launch a background data processing pipeline
+- Open the web interface in your default browser
+
+All configuration is defined in rubin_dash/config.py.
+"""
 
 from importlib.metadata import version, PackageNotFoundError
 
 try:
     __version__ = version("rubin-dash")
 except PackageNotFoundError:
-    __version__ = "0.0.0dev"
+    __version__ = "0.1.0.dev0"
 
 __author__ = "Anna Ordog"
+
+__all__ = ["__version__", "__author__"]

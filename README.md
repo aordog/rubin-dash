@@ -27,7 +27,7 @@ rubin-dash/
 │   │    └── style.css     # CSS for styling webpage
 │   └── js/
 │        ├── main.js       # main javascript for webpage
-│        └── plot.js       # javascript for plots (NOT USED YET)
+│        └── handlers.js   # javascript for webpage interactions
 ├── docs/                  # INCOMPLETE
 ├── tests/
 │    └── test_comet.py     # INCOMPLETE

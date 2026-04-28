@@ -131,7 +131,7 @@ def data_loop(
 
             table_html = TableData(cur).make_html_table()
             fig1_html  = TargetMap(1, cur).make_html_visits_map(0, "daily")
-            fig2_html  = TargetTimeSeries(1, 0, cur).make_html_visits_plot("daily")
+            fig2_html  = TargetTimeSeries(1, 0, cur).make_html_visits_plot(0, "daily")
             fig3_html  = ObservabilityData(1, 0, cur, date).make_html_obs_plot()
 
             print(f"Table:   {len(table_html) / 1024:.1f} KB")
