@@ -84,7 +84,9 @@ def main() -> None:
     """
     # ── Output / logging ────────────────────────────────────────
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    run_dir = OUTPUT_BASE / timestamp
+    run_dir = OUTPUT_BASE / 'logs'
+    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = OUTPUT_BASE / 'logs' / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = open(run_dir / f"log_{timestamp}.txt", "w")
@@ -140,7 +142,7 @@ def main() -> None:
     finally:
         stop_monitor.set()
         monitor_thread.join(timeout=10)
-        monitoring_plots(OUTPUT_BASE, timestamp, ymax_mb=500)
+        monitoring_plots(run_dir, timestamp, ymax_mb=500)
         log_file.close()
 
 

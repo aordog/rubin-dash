@@ -19,7 +19,7 @@ import healpy as hp
 import numpy as np
 import psycopg2
 from rubin_dash.utils import remove_high_dec # WILL GET RID OF THIS!
-from rubin_dash.lsst import get_camera, get_metadata_rsv
+from rubin_dash.lsst import get_camera, get_visit_metadata
 import subprocess
 from rubin_dash.config import DB_NAME
 
@@ -613,7 +613,7 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state):
     for i, row in enumerate(rows):
 
         # Get the Rubin LSST visits for the group pointings:
-        visits_use = get_metadata_rsv(visits, row['ra_gr'], row['dec_gr'])
+        visits_use = get_visit_metadata(visits, row['ra_gr'], row['dec_gr'])
 
         # Calculate the masks and visits at each target:
         _process_group(row['group_id'], date, visits_use, camera, conn)

@@ -13,6 +13,8 @@ import numpy as np
 import random  # only needed for making fake bands and camera angles
 import healpy as hp
 from datetime import datetime, timedelta
+from astropy.time import Time
+import sqlite3
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -82,6 +84,19 @@ def simulation_dates(sim_start: datetime, sim_end: datetime) -> list[str]:
         for i in range(n_days)
     ]
 
+def date_to_nightnum(date, base_mjd):
 
+    t = Time(date, scale='utc')
+    mjd = t.mjd
 
+    return int(mjd - base_mjd)
 
+def get_base_mjd(sim_lsst_db):
+
+    conn = sqlite3.connect(sim_lsst_db)
+    cursor = conn.cursor()
+
+    # Get the base MJD (minimum value from night 0)
+    cursor.execute("SELECT MIN(observationStartMJD) FROM observations")
+
+    return cursor.fetchone()[0]

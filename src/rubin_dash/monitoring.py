@@ -181,7 +181,7 @@ def _read_log(dir_files, file_time, search_string):
         List of timestamp strings extracted from matching lines.
     """
     ts = []
-    with open(f"{dir_files}/{file_time}/log_{file_time}.txt", 'r') as file:
+    with open(f"{dir_files}/log_{file_time}.txt", 'r') as file:
         for line in file:
             if search_string in line:
                 ts.append(line.strip().split()[0][1::]+" "+line.strip().split()[1][0:-1])
@@ -420,7 +420,7 @@ def monitoring_plots(dir_files, file_time, ymax_mb=800):
     """
     time_support()
 
-    data = pd.read_csv(f"{dir_files}/{file_time}/resources_{file_time}.csv")
+    data = pd.read_csv(f"{dir_files}/resources_{file_time}.csv")
 
     timestamp   = Time(data['timestamp'].tolist())
     cpu_percent = np.array(data['cpu_percent'])
@@ -462,7 +462,7 @@ def monitoring_plots(dir_files, file_time, ymax_mb=800):
     ax.set_ylabel('Memory (MB)')
     ax2.set_ylabel('CPU (%)')
 
-    plt.savefig(f"{dir_files}/{file_time}/{file_time}.pdf")
-    plt.savefig(f"{dir_files}/{file_time}/{file_time}.png")
+    plt.savefig(f"{dir_files}/{file_time}.pdf")
+    plt.savefig(f"{dir_files}/{file_time}.png")
 
     return

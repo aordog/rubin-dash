@@ -19,6 +19,9 @@ import pandas as pd
 import os
 import requests
 from rubin_dash.utils import make_fake_bands, make_fake_rot
+import sqlite3
+
+from rubin_dash.config import SIM_LSST_DB
 
 
 def _target_visits_idxs(ra_t: float,
@@ -111,7 +114,31 @@ def rsv_service(date: str) -> pd.DataFrame:
 
     return pd.DataFrame(response.json())
 
-def get_metadata_rsv(visits,
+def sim_service(nightnum):
+
+    visits = {}
+
+    conn_sim = sqlite3.connect(SIM_LSST_DB)
+    cursor = conn_sim.cursor()
+    cursor.execute("""
+                   SELECT fieldRA, fieldDec, rotSkyPos, filter, observationID FROM observations WHERE night = ?
+                   """, (nightnum,))
+    rows = cursor.fetchall()
+
+    if len(rows) > 0:
+
+        ra, dec, rot, band, obs_id = [np.array(x) for x in zip(*rows)]
+
+        visits["s_ra"]   = ra
+        visits["s_dec"]  = dec
+        visits["rot"]    = rot
+        visits["band"]   = band
+        visits["obs_id"] = obs_id
+        visits["execution_status"] = ['Performed']*len(ra)
+    
+    return pd.DataFrame(visits)
+
+def get_visit_metadata(visits,
                      ra_t: float,
                      dec_t: float):
     """Extract visit metadata for a target position from RSV data.
@@ -158,24 +185,27 @@ def get_metadata_rsv(visits,
     visits_use = {}
     visits_use['ra'] = ra[idxs]
     visits_use['dec'] = dec[idxs]
-    visits_use['band'] = make_fake_bands(len(idxs))
-    visits_use['rot'] = make_fake_rot(len(idxs))
+    if 'band' in visits.columns:
+        visits_use['band'] = np.array(visits["band"])[idxs]
+        #print('Have filter info!')
+    else:
+        visits_use['band'] = make_fake_bands(len(idxs))
+        #print('Simulating filter info!')
+    if 'rot' in visits.columns:
+        visits_use['rot'] = np.array(visits["rot"])[idxs]
+        #print('Have camera rotation info!')
+    else:
+        visits_use['rot'] = make_fake_rot(len(idxs))
+        #print('Simulating camera rotation info!')
 
     return visits_use
 
-def get_camera(os_env='/home/aordog/rubin_sim_data'):
+def get_camera():
     """Load LSST camera footprint geometry.
 
     Initializes and returns the LSST camera footprint object from
     rubin_scheduler. The footprint defines the instrument's field of
     view and detector geometry.
-
-    Parameters
-    ----------
-    os_env : str, optional
-        Path to rubin_sim data directory. Defaults to
-        '/home/aordog/rubin_sim_data'. Set via RUBIN_SIM_DATA_DIR
-        environment variable internally.
 
     Returns
     -------
@@ -184,15 +214,12 @@ def get_camera(os_env='/home/aordog/rubin_sim_data'):
 
     Notes
     -----
-    Requires rubin_scheduler package and its data files to be downloaded
-    server-side. Sets the RUBIN_SIM_DATA_DIR environment variable to os_env 
-    for the rubin_scheduler package to find required files.
+    Requires rubin_scheduler package.
 
     """
     from rubin_scheduler.utils import (LsstCameraFootprint,
                                        _angular_separation)
     print('Getting camera')
-    os.environ['RUBIN_SIM_DATA_DIR'] = os_env
     camera = LsstCameraFootprint(units='degrees')
 
     return camera
