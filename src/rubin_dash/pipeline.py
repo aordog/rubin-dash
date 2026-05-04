@@ -22,8 +22,18 @@ import gc
 import time
 from typing import TYPE_CHECKING
 
-from rubin_dash.config import REFRESH_INTERVAL, SIM_START, SIM_END
-from rubin_dash.utils import simulation_dates
+from rubin_dash.config import (
+    REFRESH_INTERVAL, 
+    SIM_START, 
+    SIM_END,
+    SIM_LSST_DB,
+    QUERY_TYPE,
+)
+from rubin_dash.utils import (
+    simulation_dates, 
+    get_base_mjd,
+    date_to_nightnum,
+)
 from rubin_dash.database import populate_database
 from rubin_dash.displays import (
     TableData,
@@ -31,7 +41,7 @@ from rubin_dash.displays import (
     TargetTimeSeries,
     ObservabilityData,
 )
-from rubin_dash.lsst import rsv_service
+from rubin_dash.lsst import rsv_service, sim_service
 
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
@@ -106,11 +116,17 @@ def data_loop(
     is read from config.py and sets the duration between cycles. Memory is 
     explicitly reclaimed after each cycle via _reclaim_memory().
     """
+
+    if QUERY_TYPE == 'SIM':
+        base_mjd = get_base_mjd(SIM_LSST_DB)
+        print(f"Querying simulated LSST data base: {SIM_LSST_DB}")
+    if QUERY_TYPE == 'RSV':
+        print(f"Querying Rubin Schedule Viewer")
+    print('=====================================================')
+
     cycle_number = 0
     for date in simulation_dates(SIM_START, SIM_END):
         cycle_number += 1
-        
-        print(f"[CYCLE START #{cycle_number}] {date}")
 
         # Signal "processing"
         shared_state.write(
@@ -119,16 +135,25 @@ def data_loop(
             progress=0.0,
             progress_msg=f"Processing {date}...",
         )
+        
+        # Reading in data with simulated database option 
+        if QUERY_TYPE == 'SIM':
+            nightnum = date_to_nightnum(date, base_mjd)
+            print(f"[CYCLE START #{cycle_number}] {date}, night #{nightnum}")
+            visits = sim_service(nightnum)
 
-        visits = rsv_service(date)
+        # Reading in data with RSV option    
+        if QUERY_TYPE == 'RSV':
+            print(f"[CYCLE START #{cycle_number}] {date}")
+            visits = rsv_service(date)
 
         if visits.empty:
             print(f"DATA MISSING for {date}")
         else:
             populate_database(
-                conn, cur, camera, user_id, visits, date, shared_state
-            )
-
+                    conn, cur, camera, user_id, visits, date, shared_state
+                )
+            
             table_html = TableData(cur).make_html_table()
             fig1_html  = TargetMap(1, cur).make_html_visits_map(0, "daily")
             fig2_html  = TargetTimeSeries(1, 0, cur).make_html_visits_plot(0, "daily")

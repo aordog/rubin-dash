@@ -20,13 +20,16 @@ INITIAL_OFFSET = 0.0               # declination limit to filter targets
 PORT = 5000 # Server
 DEFAULT_USER_ID: int  = 1  # User ID. TO DO: REVISIT WHEN ADDING USERS!
 DB_NAME = "lsst_database"
-OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
+#OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
+OUTPUT_BASE = Path(__file__).parent.parent.parent 
 
 # Simulated LSST survey (for testing)
+QUERY_TYPE = 'SIM' # Options: RSV, SIM
 REFRESH_INTERVAL: int = 30 # refresh rate for simulated iterations
-SIM_START = datetime(2025, 8, 20)  # simulated days start
-SIM_END   = datetime(2025, 11, 30) # simulated days end
+SIM_START = datetime(2025, 6, 15)  # simulated days start
+SIM_END   = datetime(2025, 12, 31) # simulated days end
 VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
+SIM_LSST_DB = "baseline_v3.3_10yrs.db"
 
 # Stress testing
 MEM_TEST_MODE = False  # Turn on memory stress testing (simulated clicks)
