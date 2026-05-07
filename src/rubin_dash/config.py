@@ -26,7 +26,8 @@ OUTPUT_BASE = Path(__file__).parent.parent.parent
 # Simulated LSST survey (for testing)
 QUERY_TYPE = 'SIM' # Options: RSV, SIM
 REFRESH_INTERVAL: int = 30 # refresh rate for simulated iterations
-SIM_START = datetime(2025, 6, 15)  # simulated days start
+SIM_HIST  = datetime(2025, 6, 16)
+SIM_START = datetime(2025, 8, 1)  # simulated days start
 SIM_END   = datetime(2025, 12, 31) # simulated days end
 VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
 SIM_LSST_DB = "baseline_v3.3_10yrs.db"

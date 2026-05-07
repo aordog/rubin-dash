@@ -151,7 +151,8 @@ def data_loop(
             print(f"DATA MISSING for {date}")
         else:
             populate_database(
-                    conn, cur, camera, user_id, visits, date, shared_state
+                    conn, cur, camera, user_id, visits, date, 
+                    shared_state=shared_state
                 )
             
             table_html = TableData(cur).make_html_table()

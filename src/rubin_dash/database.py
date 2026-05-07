@@ -18,10 +18,23 @@ import pandas as pd
 import healpy as hp
 import numpy as np
 import psycopg2
-from rubin_dash.utils import remove_high_dec # WILL GET RID OF THIS!
-from rubin_dash.lsst import get_camera, get_visit_metadata
+from datetime import timedelta
+from rubin_dash.utils import (
+    remove_high_dec,
+    simulation_dates, 
+    get_base_mjd,
+    date_to_nightnum,
+)
+from rubin_dash.lsst import (
+    get_camera, 
+    get_visit_metadata,
+    rsv_service,
+    sim_service,
+)
 import subprocess
-from rubin_dash.config import DB_NAME
+from rubin_dash.config import (
+    DB_NAME, SIM_HIST, SIM_START, QUERY_TYPE, SIM_LSST_DB
+)
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -567,8 +580,39 @@ def initialize_tracking(user_id, file_in, declim):
 
     return camera, conn, cur
 
+def populate_history(conn, cur, camera, user_id):
 
-def populate_database(conn, cur, camera, user_id, visits, date, shared_state):
+    print("Populating database up to start date...")
+
+    if QUERY_TYPE == 'SIM':
+        base_mjd = get_base_mjd(SIM_LSST_DB)
+        print(f"Querying simulated LSST data base: {SIM_LSST_DB}")
+    if QUERY_TYPE == 'RSV':
+        print(f"Querying Rubin Schedule Viewer")
+
+    cycle_number = 0
+    for date in simulation_dates(SIM_HIST, SIM_START-timedelta(days=1)):
+        cycle_number += 1
+        
+        # Reading in data with simulated database option 
+        if QUERY_TYPE == 'SIM':
+            nightnum = date_to_nightnum(date, base_mjd)
+            print(f"[CYCLE START #{cycle_number}] {date}, night #{nightnum}")
+            visits = sim_service(nightnum)
+
+        # Reading in data with RSV option    
+        if QUERY_TYPE == 'RSV':
+            print(f"[CYCLE START #{cycle_number}] {date}")
+            visits = rsv_service(date)
+
+        if visits.empty:
+            print(f"DATA MISSING for {date}")
+        else:
+            populate_database(conn, cur, camera, user_id, visits, date)
+
+    return
+
+def populate_database(conn, cur, camera, user_id, visits, date, shared_state=None):
     """Process and store visits/mask data for all target groups.
 
     Iterates through all target groups for a user and computes 2D visit
@@ -618,9 +662,10 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state):
         # Calculate the masks and visits at each target:
         _process_group(row['group_id'], date, visits_use, camera, conn)
 
-        shared_state.write(
-            progress=(i + 1) / n_groups,
-            progress_msg=f"UPDATING... processing group {i+1}/{n_groups}",
+        if shared_state is not None:
+            shared_state.write(
+                progress=(i + 1) / n_groups,
+                progress_msg=f"UPDATING... processing group {i+1}/{n_groups}",
         )
 
     return
