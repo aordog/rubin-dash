@@ -25,7 +25,9 @@ from rubin_dash.config import (
     QUERY_FILE,
 )
  
-from rubin_dash.database import initialize_tracking, set_up_db
+from rubin_dash.database import (
+    initialize_tracking, set_up_db, populate_history
+)
 from rubin_dash.state import SharedState
 from rubin_dash.pipeline import data_loop
 from rubin_dash.app import create_app
@@ -100,6 +102,9 @@ def main() -> None:
     camera, conn, cur = initialize_tracking(
         DEFAULT_USER_ID, QUERY_FILE, INITIAL_OFFSET,
     )
+
+    # ── Populate database with historical data ──────────────────
+    populate_history(conn, cur, camera, DEFAULT_USER_ID)
 
     # ── Shared state & Flask app ────────────────────────────────
     shared_state = SharedState()
