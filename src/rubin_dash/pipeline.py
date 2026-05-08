@@ -21,6 +21,8 @@ import ctypes
 import gc
 import time
 from typing import TYPE_CHECKING
+from astropy.time import Time
+from datetime import timedelta
 
 from rubin_dash.config import (
     REFRESH_INTERVAL, 
@@ -34,7 +36,7 @@ from rubin_dash.utils import (
     get_base_mjd,
     date_to_nightnum,
 )
-from rubin_dash.database import populate_database
+from rubin_dash.database import populate_database, populate_forecast
 from rubin_dash.displays import (
     TableData,
     TargetMap,
@@ -154,6 +156,8 @@ def data_loop(
                     conn, cur, camera, user_id, visits, date, 
                     shared_state=shared_state
                 )
+            populate_forecast(cur, user_id, str(Time(date)+timedelta(days=5)), 
+                              shared_state=shared_state)
             
             table_html = TableData(cur).make_html_table()
             fig1_html  = TargetMap(1, cur).make_html_visits_map(0, "daily")

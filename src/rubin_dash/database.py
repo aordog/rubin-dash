@@ -18,6 +18,7 @@ import pandas as pd
 import healpy as hp
 import numpy as np
 import psycopg2
+from psycopg2 import extras
 from datetime import timedelta
 from rubin_dash.utils import (
     remove_high_dec,
@@ -31,9 +32,11 @@ from rubin_dash.lsst import (
     rsv_service,
     sim_service,
 )
+from rubin_dash.observability import daily_observability
+
 import subprocess
 from rubin_dash.config import (
-    DB_NAME, SIM_HIST, SIM_START, QUERY_TYPE, SIM_LSST_DB
+    DB_NAME, SIM_HIST, SIM_START, QUERY_TYPE, SIM_LSST_DB, DAYS_FORECAST,
 )
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
@@ -194,7 +197,7 @@ def _add_mask_grid(pointing_ra, pointing_dec):
         (ra_grid, dec_grid) - Flattened arrays of grid coordinates.
     """
 
-    samp=0.0166667
+    samp = 1.0/60 # 2 arcmin grid
     radius = 2.5 # should work well for nside=16 grouping
 
     ra_grid = np.arange(pointing_ra - radius*np.cos(np.radians(pointing_dec)), 
@@ -338,6 +341,29 @@ def _upsert_masks(cur, gid, mask_type, masks):
     """, (gid, mask_type,
           *[psycopg2.Binary(masks[col].astype(np.int16).tobytes()) for col in MASK_COLS]))
 
+def _insert_observability(cur, date, member_id, hrs):
+    """
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor for executing the insert.
+    date : str
+        Date string (YYYY-MM-DD) for the observations.
+    member_id : int
+        Database ID of the target member.
+    hrs : dict
+        Observable hours.
+    """
+
+    # Convert numpy types to native Python types for database compatibility
+    hrs_value = float(hrs) if isinstance(hrs, (np.floating, np.integer)) else hrs
+
+    cur.execute(f"""
+        INSERT INTO member_observability
+               (time, member_id, hrs_obs)
+        VALUES (%s, %s, %s)
+    """, (date, member_id, hrs_value))
+
 def _compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
     """Count visits for a group member target from a mask grid.
 
@@ -397,7 +423,7 @@ def _process_group(gid, date, visits, camera, conn):
         Database connection for loading and saving data.
     """
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur = conn.cursor(cursor_factory=extras.DictCursor)
 
     ra_grid, dec_grid, mask_row = _read_grid_and_mask(gid, cur)
 
@@ -563,7 +589,7 @@ def initialize_tracking(user_id, file_in, declim):
     conn = psycopg2.connect(dbname="lsst_database")
 
     # Use a DictCursor to safely specify columns later
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur = conn.cursor(cursor_factory=extras.DictCursor)
 
     # Check whether targets have already been loaded into this user's table
     cur.execute("SELECT COUNT(*) FROM groups WHERE user_id = %s", (user_id,))
@@ -579,6 +605,16 @@ def initialize_tracking(user_id, file_in, declim):
     print('====================================================')
 
     return camera, conn, cur
+
+def initialize_forecast(conn, cur, user_id):
+
+    print(f"Populating forecast for {DAYS_FORECAST} days ahead...")
+
+    for date in simulation_dates(SIM_START, SIM_START+timedelta(days=DAYS_FORECAST-1)):
+        
+        populate_forecast(cur, user_id, date, shared_state=None)
+
+    return
 
 def populate_history(conn, cur, camera, user_id):
 
@@ -609,6 +645,31 @@ def populate_history(conn, cur, camera, user_id):
             print(f"DATA MISSING for {date}")
         else:
             populate_database(conn, cur, camera, user_id, visits, date)
+
+    return
+
+def populate_forecast(cur, user_id, date, shared_state=None):
+
+    print(f'Populating observability for {date}')
+
+    # Access the groups table, specifying ordering by group_id:
+    cur.execute("SELECT group_id, ra_gr, dec_gr FROM groups WHERE user_id = %s ORDER BY group_id",
+        (user_id,))
+    rows = cur.fetchall()
+
+    # Loop through all groups:
+    for i, row in enumerate(rows):
+
+        # Load members for the selected group:
+        cur.execute("""
+                SELECT member_id, ra_mem, dec_mem FROM members
+                WHERE group_id = %s ORDER BY member_idx
+                """, (row['group_id'],))
+        
+        for mem in cur.fetchall():
+
+            hrs = daily_observability(mem['ra_mem'], mem['dec_mem'], date)
+            _insert_observability(cur, date, mem['member_id'], hrs)
 
     return
 
@@ -669,3 +730,4 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state=Non
         )
 
     return
+
