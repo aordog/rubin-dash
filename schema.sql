@@ -60,4 +60,11 @@ CREATE TABLE member_daily_visits (
     yvisits    DOUBLE PRECISION DEFAULT 0,
     PRIMARY KEY (time, member_id)
 );
--- SELECT create_hypertable('member_daily_visits', 'time');
+
+-- 6. One row per source per day (append-only time series)
+CREATE TABLE member_observability (
+    time        DATE NOT NULL,
+    member_id   INT REFERENCES members(member_id),
+    hrs_obs    DOUBLE PRECISION DEFAULT 0,
+    PRIMARY KEY (time, member_id)
+);

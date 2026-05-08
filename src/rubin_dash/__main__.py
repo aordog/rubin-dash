@@ -26,7 +26,7 @@ from rubin_dash.config import (
 )
  
 from rubin_dash.database import (
-    initialize_tracking, set_up_db, populate_history
+    initialize_tracking, set_up_db, populate_history, initialize_forecast,
 )
 from rubin_dash.state import SharedState
 from rubin_dash.pipeline import data_loop
@@ -105,6 +105,7 @@ def main() -> None:
 
     # ── Populate database with historical data ──────────────────
     populate_history(conn, cur, camera, DEFAULT_USER_ID)
+    initialize_forecast(conn, cur, DEFAULT_USER_ID)
 
     # ── Shared state & Flask app ────────────────────────────────
     shared_state = SharedState()

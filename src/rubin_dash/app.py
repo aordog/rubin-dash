@@ -101,6 +101,7 @@ def create_app(
             fig1_html=TargetMap(gn,local_cur).make_html_visits_map(mn,maptype)
             fig2_html=TargetTimeSeries(gn,mn,local_cur).make_html_visits_plot(mn,maptype)
             fig3_html=ObservabilityData(gn,mn,local_cur,date).make_html_obs_plot()
+            #fig3_html = ""  # DISABLED FOR TESTING
         finally:
             local_cur.close()
         result = jsonify({"status": "ok", "fig1_html": fig1_html, 
