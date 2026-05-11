@@ -143,33 +143,32 @@ def _setup_targets(conn, user_id, list_grouped):
         List of grouped targets from _group_targets().
     """
 
-    cur = conn.cursor()
+    with conn.cursor() as cur:
+        for group in list_grouped:
 
-    for group in list_grouped:
+            # Make the grids centred on each group for the masks:
+            ra_grid, dec_grid = _add_mask_grid(
+                group['ra_gr'], group['dec_gr']
+            )
 
-        # Make the grids centred on each group for the masks:
-        ra_grid, dec_grid = _add_mask_grid(
-            group['ra_gr'], group['dec_gr']
-        )
-
-        # Add group info to the 'groups' table, returning the group ID:
-        cur.execute("""
-            INSERT INTO groups (user_id, name_gr, ra_gr, dec_gr, ra_grid, dec_grid)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING group_id
-        """, (user_id, group['name_gr'], group['ra_gr'], group['dec_gr'],
-              psycopg2.Binary(ra_grid.tobytes()),
-              psycopg2.Binary(dec_grid.tobytes())))
-        
-        # Extract group ID to use in 'members' table:
-        gid = cur.fetchone()[0]
-
-        # For each group, add all the member-target info to the 'members' group
-        for idx, (ra_mem, dec_mem) in enumerate(zip(group['ra_mem'], group['dec_mem'])):
+            # Add group info to the 'groups' table, returning the group ID:
             cur.execute("""
-                INSERT INTO members (group_id, member_idx, ra_mem, dec_mem)
-                VALUES (%s, %s, %s, %s)
-            """, (gid, idx, float(ra_mem), float(dec_mem)))
+                INSERT INTO groups (user_id, name_gr, ra_gr, dec_gr, ra_grid, dec_grid)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING group_id
+            """, (user_id, group['name_gr'], group['ra_gr'], group['dec_gr'],
+                  psycopg2.Binary(ra_grid.tobytes()),
+                  psycopg2.Binary(dec_grid.tobytes())))
+            
+            # Extract group ID to use in 'members' table:
+            gid = cur.fetchone()[0]
+
+            # For each group, add all the member-target info to the 'members' group
+            for idx, (ra_mem, dec_mem) in enumerate(zip(group['ra_mem'], group['dec_mem'])):
+                cur.execute("""
+                    INSERT INTO members (group_id, member_idx, ra_mem, dec_mem)
+                    VALUES (%s, %s, %s, %s)
+                """, (gid, idx, float(ra_mem), float(dec_mem)))
 
     # Save everything to the database:
     conn.commit()
@@ -399,7 +398,7 @@ def _compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
 
     return visits_counts
 
-def _process_group(gid, date, visits, camera, conn):
+def _process_group(gid, date, visits, camera, conn, cur):
     """Process one group: compute masks and update database.
 
     Loads a group's spatial grid and existing cumulative masks from the
@@ -421,9 +420,10 @@ def _process_group(gid, date, visits, camera, conn):
         Camera footprint for mask computation.
     conn : psycopg2.connection
         Database connection for loading and saving data.
+    cur : psycopg2.cursor (DictCursor)
+        Database cursor for query execution. Cursor is reused
+        rather than created locally to maintain consistent pool management.
     """
-
-    cur = conn.cursor(cursor_factory=extras.DictCursor)
 
     ra_grid, dec_grid, mask_row = _read_grid_and_mask(gid, cur)
 
@@ -612,7 +612,7 @@ def initialize_forecast(conn, cur, user_id):
 
     for date in simulation_dates(SIM_START, SIM_START+timedelta(days=DAYS_FORECAST-1)):
         
-        populate_forecast(cur, user_id, date, shared_state=None)
+        populate_forecast(conn, cur, user_id, date, shared_state=None)
 
     return
 
@@ -648,7 +648,26 @@ def populate_history(conn, cur, camera, user_id):
 
     return
 
-def populate_forecast(cur, user_id, date, shared_state=None):
+def populate_forecast(conn, cur, user_id, date, shared_state=None):
+    """Populate observability forecast data for all targets.
+
+    Computes and stores daily observability hours for all member targets
+    for a given date. Inserts results into member_observability table and
+    commits the transaction.
+
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Database connection for transaction management.
+    cur : psycopg2.cursor (DictCursor)
+        Database cursor for query execution.
+    user_id : int
+        User ID identifying which targets to process.
+    date : str
+        Date string (YYYY-MM-DD) for observability calculation.
+    shared_state : SharedState, optional
+        Thread-safe state container (not currently used).
+    """
 
     print(f'Populating observability for {date}')
 
@@ -671,6 +690,7 @@ def populate_forecast(cur, user_id, date, shared_state=None):
             hrs = daily_observability(mem['ra_mem'], mem['dec_mem'], date)
             _insert_observability(cur, date, mem['member_id'], hrs)
 
+    conn.commit()
     return
 
 def populate_database(conn, cur, camera, user_id, visits, date, shared_state=None):
@@ -721,7 +741,7 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state=Non
         visits_use = get_visit_metadata(visits, row['ra_gr'], row['dec_gr'])
 
         # Calculate the masks and visits at each target:
-        _process_group(row['group_id'], date, visits_use, camera, conn)
+        _process_group(row['group_id'], date, visits_use, camera, conn, cur)
 
         if shared_state is not None:
             shared_state.write(
