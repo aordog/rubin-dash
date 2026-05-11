@@ -8,12 +8,10 @@ comments explaining their purpose.
 **Author:** Anna Ordog, for CanDIAPL
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 import astropy.units as u
-from astroplan import (
-    Observer, AltitudeConstraint, AtNightConstraint
-)
+from astropy import coordinates as coord
 
 ########### USER INPUTS #########
 QUERY_FILE     = "small_query.txt" # File with user-selected targets
@@ -27,9 +25,7 @@ DB_NAME = "lsst_database"
 #OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
 OUTPUT_BASE = Path(__file__).parent.parent.parent
 DAYS_FORECAST = 5 
-OBSERVER = Observer.at_site('LSST')
-CONSTRAINTS = [AltitudeConstraint(12*u.deg, 90*u.deg),
-               AtNightConstraint.twilight_civil()]
+LOC = coord.EarthLocation.of_site('LSST')
 
 # Simulated LSST survey (for testing)
 QUERY_TYPE = 'SIM' # Options: RSV, SIM

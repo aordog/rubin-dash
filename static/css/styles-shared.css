@@ -1,14 +1,3 @@
-:root {
-  --c-background: #87BAC3;
-  --c-headers   : #473472;
-  --c-tablebrdr : #53629E;
-  --c-tabletext : black;
-  --c-hover     : #D6F4ED;
-  --c-highlights: #87BAC3;
-  --c-plots     : white;
-  --c-outlines  : black;
-}
-
 /* ---------- Header ---------- */
 h1 {
     font-size: 40px;

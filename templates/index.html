@@ -2,7 +2,11 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href='/static/css/styles.css'/>
+    <!-- Load shared styles first -->
+    <link rel="stylesheet" href='/static/css/styles-shared.css'/>
+    <!-- Load color palette (switch by changing the filename) -->
+    <!-- Available: colors-ocean.css, colors-sunset.css, colors-forest.css, colors-midnight.css -->
+    <link rel="stylesheet" href='/static/css/colors-ocean.css'/>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>

@@ -151,23 +151,39 @@ def data_loop(
 
         if visits.empty:
             print(f"DATA MISSING for {date}")
-        else:
+        else:     
             populate_database(
                     conn, cur, camera, user_id, visits, date, 
                     shared_state=shared_state
                 )
-            populate_forecast(cur, user_id, str(Time(date)+timedelta(days=5)), 
+            populate_forecast(conn, cur, user_id, str(Time(date)+timedelta(days=5)), 
                               shared_state=shared_state)
             
-            table_html = TableData(cur).make_html_table()
-            fig1_html  = TargetMap(1, cur).make_html_visits_map(0, "daily")
-            fig2_html  = TargetTimeSeries(1, 0, cur).make_html_visits_plot(0, "daily")
-            fig3_html  = ObservabilityData(1, 0, cur, date).make_html_obs_plot()
-
+            # Create display objects, extract HTML, and explicitly clean up
+            table_obj = TableData(cur)
+            table_html = table_obj.make_html_table()
+            del table_obj
+            
+            fig1_obj = TargetMap(1, cur)
+            fig1_html = fig1_obj.make_html_visits_map(0, "daily")
+            del fig1_obj
+            
+            fig2_obj = TargetTimeSeries(1, 0, cur)
+            fig2_html = fig2_obj.make_html_visits_plot(0, "daily")
+            del fig2_obj
+            
+            fig3_obj = ObservabilityData(1, 0, cur, date)
+            fig3_html = fig3_obj.make_html_obs_plot()
+            del fig3_obj
+            
             print(f"Table:   {len(table_html) / 1024:.1f} KB")
             print(f"Fig1:    {len(fig1_html)  / 1024:.1f} KB")
             print(f"Fig2:    {len(fig2_html)  / 1024:.1f} KB")
             print(f"Fig3:    {len(fig3_html)  / 1024:.1f} KB")
+
+            # Explicitly delete display objects to free internal data structures
+            # (these objects hold large numpy arrays and DataFrames internally)
+            gc.collect()
 
             # Atomically swap in the new data
             shared_state.write(
