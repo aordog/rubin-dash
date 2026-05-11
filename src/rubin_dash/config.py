@@ -24,12 +24,12 @@ DEFAULT_USER_ID: int  = 1  # User ID. TO DO: REVISIT WHEN ADDING USERS!
 DB_NAME = "lsst_database"
 #OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
 OUTPUT_BASE = Path(__file__).parent.parent.parent
-DAYS_FORECAST = 5 
+DAYS_FORECAST = 30 
 LOC = coord.EarthLocation.of_site('LSST')
 
 # Simulated LSST survey (for testing)
 QUERY_TYPE = 'SIM' # Options: RSV, SIM
-REFRESH_INTERVAL: int = 30 # refresh rate for simulated iterations
+REFRESH_INTERVAL: int = 15 # refresh rate for simulated iterations
 SIM_HIST  = datetime(2025, 9, 1)
 SIM_START = datetime(2025, 9, 4)  # simulated days start
 SIM_END   = datetime(2025, 12, 31) # simulated days end

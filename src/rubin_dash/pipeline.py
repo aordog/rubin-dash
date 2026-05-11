@@ -30,6 +30,7 @@ from rubin_dash.config import (
     SIM_END,
     SIM_LSST_DB,
     QUERY_TYPE,
+    DAYS_FORECAST,
 )
 from rubin_dash.utils import (
     simulation_dates, 
@@ -156,7 +157,8 @@ def data_loop(
                     conn, cur, camera, user_id, visits, date, 
                     shared_state=shared_state
                 )
-            populate_forecast(conn, cur, user_id, str(Time(date)+timedelta(days=5)), 
+            populate_forecast(conn, cur, user_id, 
+                              str(Time(date)+timedelta(days=DAYS_FORECAST)), 
                               shared_state=shared_state)
             
             # Create display objects, extract HTML, and explicitly clean up

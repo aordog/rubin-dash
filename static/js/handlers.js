@@ -59,7 +59,7 @@ function initTableRowClickHandlers() {
                 });
                 
                 // Reattach observability plot click handler to new plot
-                // DISABLED: setTimeout(() => attachObsPlotClickHandler(), 100);
+                setTimeout(() => attachObsPlotClickHandler(), 100);
             })
             .catch(err => console.error('Fetch error:', err));
         });

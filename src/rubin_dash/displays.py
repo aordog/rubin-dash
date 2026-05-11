@@ -23,7 +23,8 @@ from astropy import coordinates as coord
 import ephem
 from datetime import timedelta
 
-from rubin_dash.config import VERBOSE
+from rubin_dash.config import VERBOSE, DAYS_FORECAST
+from rubin_dash.observability import el_vs_time
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
 MASK_COLS = [f'{b}mask' for b in BANDS]
@@ -421,110 +422,6 @@ def _make_html_visits_plot(data, idx_mem, maptype):
     return fig_html
 
 def _populate_observability(gid, idx_mem, cur, date):
-    """Compute and format observability forecast data.
-
-    Calculates target altitude/azimuth over a 30-day window from the current 
-    date, using the LSST Observatory location. Computes sunrise/sunset times 
-    and observable hours (el > 15 deg) for each night.
-
-    Parameters
-    ----------
-    gid : int
-        Group ID identifying the target group.
-    idx_mem : int
-        Member index within the group (0-based).
-    cur : psycopg2.cursor
-        Database cursor with DictCursor factory.
-    date : str or datetime
-        Reference date (typically today) for observability window.
-
-    Returns
-    -------
-    dict
-        Observability data with keys: ra/dec (target coords), az/el
-        (altitude/azimuth over 30 days), utc (time array), sunrise/sunset
-        (arrays of sunrise/sunset times), hours (observable hours per
-        night), days_utc (array of dates).
-    """
-    data = {}
-
-    # Extract the RA and dec from group and member indices:
-    cur.execute(f"""
-        SELECT ra_mem, dec_mem FROM members 
-        WHERE group_id = %s AND member_idx =%s
-        """, (gid,idx_mem))
-    coords = cur.fetchone()
-    RA_t  = coords[0]
-    dec_t = coords[1]
-
-    ##### Constants - eventually convert to inputs ####
-    Ndays  =  60.0 # days
-    dt =  5.0/60. # hours
-
-    # Get location of LSST and start date for plot:
-    loc = coord.EarthLocation.of_site('LSST')
-    start_date = Time(date).iso
-
-    ##### 1) Data for tracking the target #####
-
-    # Set up time array:
-    dmjd_arr = np.arange(0, Ndays+1+dt/24., dt/24.)
-    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
-
-    # Get alt/az coords of target vs time:
-    c = coord.SkyCoord(RA_t, dec_t, frame='icrs', unit='deg')
-    aa_frame = coord.AltAz(obstime = t_utc, location = loc)
-    c_altaz  = c.transform_to(aa_frame)
-    az = c_altaz.az.deg.copy()
-    az[az > 180.] = az[az > 180.] - 360.
-
-    data['loc'] = loc
-    data['az']  = az
-    data['el']  = c_altaz.alt.deg
-    data['utc'] = t_utc
-    data['ra']  = RA_t
-    data['dec'] = dec_t
-
-    ##### 2) Data for tracking sunrise/sunset #####
-    
-    # Set up array of days (expand 1 day beyond range in both directions):
-    days_mjd = np.arange(-1.0, Ndays+1.0, 1.0)
-    days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
-
-    # Set up observer object and populate:
-    obs = ephem.Observer()
-    obs.lon  = str(loc.geodetic.lon.deg) #Note that lon should be string
-    obs.lat  = str(loc.geodetic.lat.deg) #Note that lat should be string
-    obs.elev = loc.geodetic.height.value
-
-    # Loop through days to get sunrise and sunset times:
-    data['sunrise'] = []
-    data['sunset']  = []
-    data['hours']   = []
-    data['days_utc'] = days_utc[1:-1]
-
-    # Loop to record sunrises and sunsets:
-    for i in range(0,len(days_utc)):
-
-        obs.date = str(days_utc[i])
-        sunrise = obs.next_rising(ephem.Sun()).datetime()
-        data['sunrise'].append(sunrise)
-
-        obs.date = str(days_utc[i])
-        sunset = obs.next_setting(ephem.Sun()).datetime()
-        data['sunset'].append(sunset)
-
-    # Loop to count hours of night-time:
-    for i in range(1,len(days_utc)-1):
-        idx_count = np.where((Time(t_utc).mjd>Time(data['sunset'][i]).mjd) & 
-                             (Time(t_utc).mjd<Time(data['sunrise'][i+1]).mjd) & 
-                             (data['el']>15))[0]
-        data['hours'].append((Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.)
-
-    return data
-
-
-def _populate_observability_v2(gid, idx_mem, cur, date):
     """
     """
     data = {}
@@ -544,7 +441,7 @@ def _populate_observability_v2(gid, idx_mem, cur, date):
         SELECT time, hrs_obs FROM member_observability
         WHERE member_id = %s AND time BETWEEN %s AND %s
         ORDER BY time
-    """, (mem_id, date, str(Time(date)+timedelta(days=5))))
+    """, (mem_id, date, str(Time(date)+timedelta(days=DAYS_FORECAST))))
     rows = cur.fetchall()
 
     data['hours']   = []
@@ -594,42 +491,45 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
     #t_min = times[0]
     #t_max = times[-1]
     
-    #red_dot_date = data['days_utc'].iso[0]  # Default: first day
+    red_dot_date = data['days_utc'].iso[0]  # Default: first day
     
-    #if selected_date:
-    #    try:
-    #        sel_t = Time(selected_date)
-    #        diffs = [abs((t - sel_t).jd) for t in times]
-    #        closest_idx = diffs.index(min(diffs))
-    #        closest_time = times[closest_idx]
-    #        red_dot_date = closest_time.iso.split('T')[0]  # Date portion only
-    #    except Exception:
-    #        closest_time = t_min
-    #        red_dot_date = t_min.iso.split('T')[0]
-    #else:
+    if selected_date:
+        t_utc, el, sunrise_list, sunset_list = el_vs_time(data['ra'], data['dec'], selected_date)
+        #try:
+        sel_t = Time(selected_date)
+        times = [Time(d) for d in t_utc]
+        diffs = [abs((t - sel_t).jd) for t in times]
+        closest_idx = diffs.index(min(diffs))
+        closest_time = times[closest_idx]
+        red_dot_date = closest_time.iso.split('T')[0]  # Date portion only
+        #except Exception:
+        #    closest_time = t_min
+        #    red_dot_date = t_min.iso.split('T')[0]
+    else:
+        t_utc, el, sunrise_list, sunset_list = el_vs_time(data['ra'], data['dec'], data['days_utc'][0])
     #    # Default: use first date
-    #    closest_time = t_min
-    #    red_dot_date = t_min.iso.split('T')[0]
+        closest_time = t_utc[0]#t_min
+        red_dot_date = t_utc[0].iso.split('T')[0]
     
     # Calculate window: selected_date to selected_date + window_days
-    #window_start = closest_time
-    #window_end = closest_time + window_days
+    window_start = closest_time
+    window_end = closest_time + window_days
     #window_start = max(window_start, t_min)
     #window_end = min(window_end, t_max)
     
-    #bottom_x_min = window_start.iso
-    #bottom_x_max = window_end.iso
+    bottom_x_min = window_start.iso
+    bottom_x_max = window_end.iso
 
-    #fig.add_trace(
-    #    go.Scatter(
-    #        x=data['utc'].iso,
-    #        y=data['el'],
-    #        mode='lines',
-    #        name = 'elevation',
-    #        line=dict(width=1.5, color='yellow')
-    #    ),
-    #    row=2, col=1
-    #)
+    fig.add_trace(
+        go.Scatter(
+            x=t_utc.iso, #data['utc'].iso,
+            y=el, #data['el'],
+            mode='lines',
+            name = 'elevation',
+            line=dict(width=1.5, color='yellow')
+        ),
+        row=2, col=1
+    )
     fig.add_hrect(
         y0=-90, y1=0,           # horizontal lines to shade between
         fillcolor="darkolivegreen", 
@@ -654,33 +554,33 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
         line_width=0,
         row=2, col=1
     )
-    #for i in range(0,len(data['sunrise'])):
-    #    fig.add_shape(
-    #        type="rect",
-    #        x0=Time(data['sunrise'][i]).iso, 
-    #        x1=Time(data['sunset'][i]).iso,
-    #        y0=15,
-    #        y1=86.5,
-    #        fillcolor="deepskyblue",
-    #        opacity=0.6,
-    #        line_width=0,
-    #        layer="above",
-    #        xref="x2",
-    #        yref="y2"
-    #    )
-    #for i in range(0,len(data['sunrise'])-1):
-    #    fig.add_shape(
-    #        type="rect",
-    #        x0=Time(data['sunset'][i]).iso, 
-    #        x1=Time(data['sunrise'][i+1]).iso,
-    #        y0=15,
-    #        y1=86.5,
-    #        fillcolor="black",
-    #        line_width=0,
-    #        layer="below",
-    #        xref="x2",
-    #        yref="y2"
-    #    )
+    for i in range(0,len(sunrise_list)):
+        fig.add_shape(
+            type="rect",
+            x0=Time(sunrise_list[i]).iso, 
+            x1=Time(sunset_list[i]).iso,
+            y0=15,
+            y1=86.5,
+            fillcolor="deepskyblue",
+            opacity=0.6,
+            line_width=0,
+            layer="above",
+            xref="x2",
+            yref="y2"
+        )
+    for i in range(0,len(sunrise_list)-1):
+        fig.add_shape(
+            type="rect",
+            x0=Time(sunset_list[i]).iso, 
+            x1=Time(sunrise_list[i+1]).iso,
+            y0=15,
+            y1=86.5,
+            fillcolor="black",
+            line_width=0,
+            layer="below",
+            xref="x2",
+            yref="y2"
+        )
     fig.add_trace(
         go.Scatter(
             x=data['days_utc'].iso,
@@ -694,37 +594,37 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
     
     # Add interactive point at the selected date
     # Find the y-value (hours) corresponding to the red_dot_date
-    #red_dot_idx = None
-    #for i, d in enumerate(data['days_utc'].iso):
-    #    if d.startswith(red_dot_date):
-    #        red_dot_idx = i
-    #        break
+    red_dot_idx = None
+    for i, d in enumerate(data['days_utc'].iso):
+        if d.startswith(red_dot_date):
+            red_dot_idx = i
+            break
     
-    #if red_dot_idx is None:
-    #    red_dot_idx = 0  # Fallback to first
+    if red_dot_idx is None:
+        red_dot_idx = 0  # Fallback to first
     
-    #fig.add_trace(
-    #    go.Scatter(
-    #        x=[data['days_utc'].iso[red_dot_idx]],
-    #        y=[data['hours'][red_dot_idx]],
-    #        mode='markers',
-    #        name='selected day',
-    #        marker=dict(size=8, color='red', symbol='circle'),
-    #        showlegend=False
-    #    ),
-    #    row=1, col=1
-    #)
+    fig.add_trace(
+        go.Scatter(
+            x=[data['days_utc'].iso[red_dot_idx]],
+            y=[data['hours'][red_dot_idx]],
+            mode='markers',
+            name='selected day',
+            marker=dict(size=8, color='red', symbol='circle'),
+            showlegend=False
+        ),
+        row=1, col=1
+    )
     
     # Add shaded region to top panel showing the zoomed window
-    #fig.add_vrect(
-    #    x0=window_start.iso, 
-    #    x1=window_end.iso,
-    #    fillcolor="salmon",
-    #    opacity=0.2,
-    #    layer="below",
-    #    line_width=0,
-    #    row=1, col=1
-    #)
+    fig.add_vrect(
+        x0=window_start.iso, 
+        x1=window_end.iso,
+        fillcolor="salmon",
+        opacity=0.2,
+        layer="below",
+        line_width=0,
+        row=1, col=1
+    )
 
     # Set top panel x-axis range (full 30 days)
     fig.update_xaxes(title_text="Date (UTC)", 
@@ -733,10 +633,10 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
                      row=1, col=1)
     
     # Set bottom panel x-axis range (zoomed to window around selected_date)
-    #fig.update_xaxes(title_text="Date (UTC)", 
-    #                 range=[bottom_x_min, bottom_x_max],
-    #                 showgrid=False, tickformat="%d/%m/%y",
-    #                 row=2, col=1)
+    fig.update_xaxes(title_text="Date (UTC)", 
+                     range=[bottom_x_min, bottom_x_max],
+                     showgrid=False, tickformat="%d/%m/%y",
+                     row=2, col=1)
     fig.update_yaxes(
         title_text="Hours observable",
         range=[0, 15],
@@ -951,7 +851,7 @@ class ObservabilityData:
     def __init__(self, gid, idx_mem, cur, date, 
                  description: str = "Observability data object"):
         self.description = description
-        self.data = _populate_observability_v2(gid, idx_mem, cur, date)
+        self.data = _populate_observability(gid, idx_mem, cur, date)
 
     def make_html_obs_plot(self, selected_date=None, window_days=5):
         """Generate observability forecast visualization as HTML for 
