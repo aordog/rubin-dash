@@ -18,6 +18,9 @@ import pandas as pd
 import numpy as np
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import plotly.io as pio
+import matplotlib.colors as mcolors
+import seaborn as sns
 from astropy.time import Time
 from astropy import coordinates as coord
 import ephem
@@ -389,29 +392,40 @@ def _make_html_visits_plot(data, idx_mem, maptype):
     title = f"<b>RA = {data['ra_mem'][idx_mem]}&deg;, dec = {data['dec_mem'][idx_mem]}&deg;</b>"
     fig.update_layout(title=dict(text=title, x=0.5, xanchor="center"))
 
-    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
-    msizes = [18, 16, 14, 12, 10, 8]
+    # Get colors from seaborn's colorblind palette with specific indices for better distinction
+    cb_palette = sns.color_palette("colorblind", 10)
+    color_indices = [0, 1, 2, 3, 4, 7]
+    colors = [mcolors.rgb2hex(cb_palette[i]) for i in color_indices]
+    symbols = ['circle', 'square', 'diamond', 'cross', 'x', 'star']
 
     # Loop through and add traces
-    for color, name, visit, s in zip(colors, BANDS, VISIT_COLS, msizes):
+    for color, name, visit, symbol in zip(colors, BANDS, VISIT_COLS, symbols):
 
         fig.add_trace(
             go.Scatter(x = pd.to_datetime(data[maptype]['time']),
                        y = data[maptype][visit],
                 mode='lines+markers',
                 name=name,
+                line=dict(width=2, color=color),
                 marker=dict(
-                    size=s,
+                    size=7,
                     color=color,
-                    symbol='circle'
+                    symbol=symbol
                 )
             ),
             row=1, col=1
         )
 
-    fig.update_xaxes(title_text="Date", row=1)
-    fig.update_yaxes(title_text="Number of visits", col=1)
-    fig.update_layout(showlegend=True, margin=dict(l=60, r=40, t=50, b=50))
+    fig.update_xaxes(title_text="Date", row=1, showgrid=True, gridcolor='#d3d3d3', showline=True, mirror=True)
+    fig.update_yaxes(title_text="Number of visits", col=1, showgrid=True, gridcolor='#d3d3d3', showline=True, mirror=True)
+    
+    # Get the font color from Plotly's default template and apply it to axes
+    template = pio.templates["plotly"]
+    font_color = template.layout.font.color or '#444'
+    fig.update_xaxes(linecolor=font_color, row=1)
+    fig.update_yaxes(linecolor=font_color, col=1)
+    
+    fig.update_layout(showlegend=True, margin=dict(l=60, r=40, t=50, b=50), plot_bgcolor='white')
 
     fig.update_layout(autosize=True, width=None, height=None)
 
@@ -531,7 +545,7 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
         row=2, col=1
     )
     fig.add_hrect(
-        y0=-90, y1=0,           # horizontal lines to shade between
+        y0=-45, y1=0,           # horizontal lines to shade between
         fillcolor="darkolivegreen", 
         opacity=0.7,
         layer="above",
@@ -630,31 +644,45 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
     fig.update_xaxes(title_text="Date (UTC)", 
                      range=[data['days_utc'].iso[0], data['days_utc'].iso[-1]], 
                      showgrid=False, tickformat="%d/%m/%y",
+                     showline=True, mirror=True,
                      row=1, col=1)
     
     # Set bottom panel x-axis range (zoomed to window around selected_date)
     fig.update_xaxes(title_text="Date (UTC)", 
                      range=[bottom_x_min, bottom_x_max],
                      showgrid=False, tickformat="%d/%m/%y",
+                     showline=True, mirror=True,
                      row=2, col=1)
     fig.update_yaxes(
         title_text="Hours observable",
         range=[0, 15],
         row=1, col=1,
         showgrid=True,
+        gridcolor='#d3d3d3',
         tickvals=[0, 3, 6, 9, 12, 15],
-        ticktext=['0', '3', '6', '9', '12', '15']
+        ticktext=['0', '3', '6', '9', '12', '15'],
+        showline=True, mirror=True
     )
     fig.update_yaxes(
         title_text="Elevation",
-        range=[-90, 90],
+        range=[-45, 90],
         showgrid=False,
         zeroline=False,
-        tickvals=[-90, -45, 0, 45, 90],
-        ticktext=['-90°', '-45°', '0°', '45°', '90°'],
+        tickvals=[-45, 0, 45, 90],
+        ticktext=['-45°', '0°', '45°', '90°'],
+        showline=True, mirror=True,
         row=2, col=1
     )
-    fig.update_layout(showlegend=False, margin=dict(l=60, r=40, t=50, b=50)) 
+    
+    # Get the font color from Plotly's default template and apply it to axes
+    template = pio.templates["plotly"]
+    font_color = template.layout.font.color or '#444'
+    fig.update_xaxes(linecolor=font_color, row=1, col=1)
+    fig.update_xaxes(linecolor=font_color, row=2, col=1)
+    fig.update_yaxes(linecolor=font_color, row=1, col=1)
+    fig.update_yaxes(linecolor=font_color, row=2, col=1)
+    
+    fig.update_layout(showlegend=False, margin=dict(l=60, r=40, t=50, b=50), plot_bgcolor='white') 
     fig.update_layout(autosize=True, width=None, height=None)
 
     fig_html = fig.to_html(full_html=False, div_id='figure3',

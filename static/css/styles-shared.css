@@ -173,7 +173,7 @@ h2 {
     width: 0%;
     border-radius: 8px;
     transition: width 0.5s ease;
-    background: var(--c-tablebrdr);
+    background: var(--c-highlights);
 }
 
 /* ---------- Map-type toggle buttons ---------- */
