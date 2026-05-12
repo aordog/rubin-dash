@@ -1,7 +1,7 @@
 # Rubin Visits Dashboard
 ## Code to make prototype dashboard showing Rubin LSST progress for a list of targets.
 
-The current version is in a prototyping phase, using data from the Rubin Schedule Viewer (RSV). Incrementing of observing dates is simulated at a cadence of seconds to minutes, to illustrate how the displays will update with survey progress. The RSV database does **not** include camera angles or bands for the scheduled/completed observations - for now these are simulated and the resulting visits maps/plots should only be interpreted as examples, not reflecting the actual camera/filter settings of the observations.
+The current version is in a prototyping phase, using data from either the Rubin Schedule Viewer (RSV) or a simulated database (best for offline functionality). Incrementing of observing dates is simulated at a cadence of seconds to minutes, to illustrate how the displays will update with survey progress. The RSV database does **not** include camera angles or bands for the scheduled/completed observations - for now these are simulated and the resulting visits maps/plots should only be interpreted as examples, not reflecting the actual camera/filter settings of the observations. The simulated database offers more realistic camera angles and filter distributions.
 
 ---
 ## Project Structure
@@ -10,28 +10,31 @@ rubin-dash/
 ├── src/
 │   └── rubin_dash/
 │        ├── __init__.py
-│        ├── __main__.py   # entry point
-│        ├── config.py     # parameters and tunables
-│        ├── lsst.py       # Rubin LSST services
-│        ├── utils.py      # simulation routinees for prototyping
-│        ├── database.py   # database setup for user-selected targets
-│        ├── displays.py   # prepare display data and make HTML plots
-│        ├── pipeline.py   # main background data loop
-│        ├── state.py      # thread-safe shared state; links pipeline to app
-│        ├── app.py        # Flask app factory and routes
-│        └── monitoring.py # memory/CPU usage monitoring/stress tests
+│        ├── __main__.py       # entry point
+│        ├── config.py         # parameters and tunables
+│        ├── lsst.py           # Rubin LSST services
+│        ├── utils.py          # simulation routines for prototyping
+│        ├── database.py       # database setup for user-selected targets
+│        ├── observability.py  # functions for forecasting plots
+│        ├── displays.py       # prepare display data and make HTML plots
+│        ├── pipeline.py       # main background data loop
+│        ├── state.py          # thread-safe shared state; links pipeline to app
+│        ├── app.py            # Flask app factory and routes
+│        └── monitoring.py     # memory/CPU usage monitoring/stress tests
 ├── templates/
-│   └── index.html         # overall webpage structure
+│   └── index.html             # overall webpage structure
 ├── static/
 │   ├── css/
-│   │    └── style.css     # CSS for styling webpage
+│   │    ├── colors-<name>.css # color palettes for webpage
+│   │    └── style-shared.css  # CSS for styling webpage
 │   └── js/
-│        ├── main.js       # main javascript for webpage
-│        └── handlers.js   # javascript for webpage interactions
-├── docs/                  # INCOMPLETE
+│        ├── main.js           # main javascript for webpage
+│        └── handlers.js       # javascript for webpage interactions
+├── docs/                      # INCOMPLETE
 ├── tests/
-│    └── test_comet.py     # INCOMPLETE
-├── schema.sql             # PostgreSQL database schema to store user targets
+│    └── test_comet.py         # INCOMPLETE
+├── logs/                      # log files, plots of memory/CPU usage monitoring
+├── schema.sql                 # PostgreSQL database schema to store user targets
 └── pyproject.toml        
 ```
 ---

@@ -10,7 +10,7 @@ replaced by real data from the Rubin scheduler as the system matures.
 """
 
 import numpy as np
-import random  # only needed for making fake bands and camera angles
+import random  
 import healpy as hp
 from datetime import datetime, timedelta
 from astropy.time import Time
@@ -22,10 +22,49 @@ VISIT_COLS = [f'{b}visits' for b in BANDS]
 
 
 def remove_high_dec(ra_in, dec_in, dec_lim):
+    """Filter out sources above a declination limit.
+
+    Removes coordinates from input arrays where declination exceeds the
+    specified limit. Used to exclude sources in the far north from example
+    source catalogs to roughly match Rubin Observatory's observing footprint.
+
+    Parameters
+    ----------
+    ra_in : array-like
+        Right ascension values in degrees.
+    dec_in : array-like
+        Declination values in degrees.
+    dec_lim : float
+        Declination limit in degrees. Sources with dec >= dec_lim are removed.
+
+    Returns
+    -------
+    tuple[ndarray, ndarray]
+        Filtered (ra, dec) arrays containing only sources with dec < dec_lim.
+    """
     return ra_in[dec_in<dec_lim], dec_in[dec_in<dec_lim]
 
 def make_fake_src_list(nside, declim):
+    """Generate fake source catalog using HEALPix tessellation.
 
+    Creates a uniform source catalog by placing one source at each HEALPix
+    pixel center at a given resolution level. Sources above the declination
+    limit are removed to match the Rubin Observatory observing footprint.
+    Used for prototyping the dashboard with uniform sky coverage of targets.
+
+    Parameters
+    ----------
+    nside : int
+        HEALPix resolution parameter (must be power of 2). Higher values
+        create denser source catalogs.
+    declim : float
+        Declination limit in degrees. Sources with dec >= declim are excluded.
+
+    Returns
+    -------
+    tuple[ndarray, ndarray]
+        (RA, Dec) coordinates in degrees for all HEALPix pixels below declim.
+    """
     idx_list = np.arange(0,hp.nside2npix(nside))
 
     ra, dec = hp.pix2ang(nside, idx_list, lonlat=True)
@@ -34,7 +73,23 @@ def make_fake_src_list(nside, declim):
                            dec.astype(float), declim)
 
 def make_fake_bands(nvisits):
+    """Generate random filter bands for simulated visits.
 
+    Creates a list of randomly selected LSST filter bands to assign to
+    simulated observation visits. Used in the prototyping phase to add filter
+    diversity to simulated observing programs when using datasets such as RSV
+    that currently lack this information.
+
+    Parameters
+    ----------
+    nvisits : int
+        Number of visits to generate filter bands for.
+
+    Returns
+    -------
+    list[str]
+        List of nvisits filter band codes, each one of ('u','g','r','i','z','y').
+    """
     bands = ['u','g','r','i','z','y']
 
     return random.choices(bands, k=nvisits)
@@ -85,14 +140,48 @@ def simulation_dates(sim_start: datetime, sim_end: datetime) -> list[str]:
     ]
 
 def date_to_nightnum(date, base_mjd):
+    """Convert ISO date string to Rubin night number.
 
+    Converts a date string to Modified Julian Date (MJD) and computes the
+    night number relative to the base MJD provided. Night numbering matches
+    the convention used by the simulated LSST database.
+
+    Parameters
+    ----------
+    date : str
+        ISO format date string (YYYY-MM-DD).
+    base_mjd : float
+        Reference MJD for night 0 in the simulation.
+
+    Returns
+    -------
+    int
+        Night number relative to base_mjd (integer part of MJD - base_mjd).
+    """
     t = Time(date, scale='utc')
     mjd = t.mjd
 
     return int(mjd - base_mjd)
 
 def get_base_mjd(sim_lsst_db):
+    """Retrieve the base MJD from the simulated LSST database.
 
+    Queries the simulated LSST database to find the minimum observation start
+    MJD, which serves as the reference point (night 0) for night numbering.
+    This base MJD is used in date_to_nightnum() to convert dates to night
+    numbers consistent with the database.
+
+    Parameters
+    ----------
+    sim_lsst_db : str
+        Path to the simulated LSST SQLite database file.
+
+    Returns
+    -------
+    float
+        The minimum observationStartMJD value from the observations table,
+        representing the base MJD (night 0).
+    """
     conn = sqlite3.connect(sim_lsst_db)
     cursor = conn.cursor()
 
