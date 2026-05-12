@@ -244,18 +244,22 @@ class QuietFilter(logging.Filter):
     NOISY = {'/check_update', '/next_update'}
 
     def filter(self, record):
-        """Check if a log record should be allowed.
-        
+        """Check if a log record should be allowed through the filter.
+
+        Suppresses logging output for noisy endpoints that generate
+        high-cadence messages (e.g., frequent polling requests). This keeps
+        log files and terminal output readable during normal operation.
+
         Parameters
         ----------
         record : logging.LogRecord
             The log record to filter.
-        
+
         Returns
         -------
         bool
-            False if the record contains a message from a noisy endpoint,
-            True otherwise.
+            False if the record contains a message from a noisy endpoint
+            (endpoint paths in NOISY set), True otherwise (record allowed).
         """
         return not any(path in record.getMessage() for path in self.NOISY)
 
@@ -288,22 +292,23 @@ class Logger:
 
         Splits message by newlines and writes each line to all destinations.
         Prepends timestamps to lines that start at the beginning of a new line.
+        Updates internal state tracking to know when the next write starts on
+        a new line.
 
         Parameters
         ----------
         msg : str
             Message to write.
-
-        Returns
-        -------
-        bool
-            Updated at_line_start flag indicating final output position.
         """
         self.at_line_start = _write(self.destinations, msg,
                                     self.at_line_start)
 
     def flush(self):
-        """Flush all output streams."""
+        """Flush all output streams.
+
+        Ensures all buffered data in each destination stream is written out
+        immediately. Called after each write operation for real-time logging.
+        """
         for dest in self.destinations:
             dest.flush()
 
@@ -321,8 +326,8 @@ def monitor_resources(log_path, interval=5, stop_event=None):
     interval : float, optional
         Sampling interval in seconds. Default is 5.
     stop_event : threading.Event
-        Event to signal monitoring to stop. If not set, monitoring runs
-        indefinitely.
+        Event object to signal monitoring to stop. When stop_event.is_set()
+        returns True, monitoring terminates. Required (not optional).
     """
     process = psutil.Process(os.getpid())
 

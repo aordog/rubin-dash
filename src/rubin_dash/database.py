@@ -1,7 +1,7 @@
 """
 database.py: User-specific Database setup and population for target tracking.
 
-This module manages all database operations for the dashboard, including 
+This module manages all database operations for the dashboard, including
 schema creation for the user-specific database, initialization of the database
 with target organization, and populating the database with daily updates.
 
@@ -9,6 +9,8 @@ Public API
 ----------
 - ``set_up_db`` - Create and initialize the database schema.
 - ``initialize_tracking`` - Load and organize targets and setup for a user.
+- ``initialize_forecast`` - Compute and store forecast data.
+- ``populate_history`` - Populate database with historical observation data.
 - ``populate_database`` - Process visits and mask data for all groups.
 
 **Author:** Anna Ordog, for CanDIAPL
@@ -30,7 +32,7 @@ from rubin_dash.lsst import (
     get_camera, 
     get_visit_metadata,
     rsv_service,
-    sim_service,
+    sim_service_range,
 )
 from rubin_dash.observability import daily_observability
 
@@ -607,8 +609,27 @@ def initialize_tracking(user_id, file_in, declim):
     return camera, conn, cur
 
 def initialize_forecast(conn, cur, user_id):
+    """Initialize and populate observability forecast for all targets.
 
-    print(f"Populating forecast for {DAYS_FORECAST} days ahead...")
+    Computes and stores daily observability forecast data for all member 
+    targets across a forecast window starting from SIM_START. Creates entries 
+    in the member_observability table for the specified forecast period.
+
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Database connection for transaction management.
+    cur : psycopg2.cursor (DictCursor)
+        Database cursor for query execution.
+    user_id : int
+        User ID identifying which targets to process.
+
+    Notes
+    -----
+    Forecast window is defined by DAYS_FORECAST in config.py.
+    Called once during application initialization before the data_loop.
+    Uses populate_forecast() for each date in the window.
+    """
 
     for date in simulation_dates(SIM_START, SIM_START+timedelta(days=DAYS_FORECAST-1)):
         
@@ -617,12 +638,50 @@ def initialize_forecast(conn, cur, user_id):
     return
 
 def populate_history(conn, cur, camera, user_id):
+    """Populate database with historical observation data.
 
-    print("Populating database up to start date...")
+    Loads observation data between SIM_HIST and SIM_START from the
+    simulated LSST database (or Rubin Schedule Viewer if configured).
+    For simulated data, this uses sim_service_range() to efficiently fetch
+    all observations in the date range in a single database query, then
+    iterates through each date to process and store the visit masks.
+
+    This function is called once during application initialization before the 
+    daily data_loop begins, ensuring the dashboard has historical content.
+
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Database connection for writing observation data.
+    cur : psycopg2.cursor (DictCursor)
+        Database cursor for queries.
+    camera : rubin_scheduler.utils.LsstCameraFootprint
+        Rubin LSST camera footprint object for computing visit masks.
+    user_id : int
+        User ID identifying which groups to process.
+
+    Notes
+    -----
+    - For SIM data: Uses sim_service_range() for efficient bulk loading
+    - For RSV data: Queries one night at a time via rsv_service()
+    - Calls populate_database() for each date to compute and store masks
+    - Date range is defined by SIM_HIST and SIM_START in config.py
+    """
 
     if QUERY_TYPE == 'SIM':
         base_mjd = get_base_mjd(SIM_LSST_DB)
         print(f"Querying simulated LSST data base: {SIM_LSST_DB}")
+        
+        # Fetch all observations for the entire date range in one query
+        min_date = SIM_HIST
+        max_date = SIM_START - timedelta(days=1)
+        min_night = date_to_nightnum(min_date, base_mjd)
+        max_night = date_to_nightnum(max_date, base_mjd)
+        
+        print(f"Fetching all observations from night {min_night} to {max_night}...")
+        visits_by_night = sim_service_range(min_night, max_night)
+        print(f"Loaded {len(visits_by_night)} nights of observation data.")
+    
     if QUERY_TYPE == 'RSV':
         print(f"Querying Rubin Schedule Viewer")
 
@@ -634,7 +693,7 @@ def populate_history(conn, cur, camera, user_id):
         if QUERY_TYPE == 'SIM':
             nightnum = date_to_nightnum(date, base_mjd)
             print(f"[CYCLE START #{cycle_number}] {date}, night #{nightnum}")
-            visits = sim_service(nightnum)
+            visits = visits_by_night.get(nightnum, pd.DataFrame())
 
         # Reading in data with RSV option    
         if QUERY_TYPE == 'RSV':
@@ -697,9 +756,12 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state=Non
     """Process and store visits/mask data for all target groups.
 
     Iterates through all target groups for a user and computes 2D visit
-    masks based on the Rubin Schedule Viewer data using _process_group().
+    masks based on observation visit data using _process_group().
     Updates both daily and cumulative masks in the user-specific database,
     and updates shared state for progress reporting to the web interface.
+
+    This function is called once per date during both initial history 
+    population and daily refresh cycles.
 
     Parameters
     ----------
@@ -712,11 +774,12 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state=Non
     user_id : int
         User ID identifying which groups to process.
     visits : pandas.DataFrame
-        Visit schedule data from Rubin Schedule Viewer containing ra,
-        dec, execution_status, and obs_id columns.
+        Visit schedule data containing columns: s_ra, s_dec,
+        execution_status, obs_id. Can originate from either sim_service(),
+        rsv_service(), or sim_service_range().
     date : str
         Date string (YYYY-MM-DD) for which to process data.
-    shared_state : SharedState
+    shared_state : SharedState, optional
         Thread-safe container for dashboard state. Progress updates are
         written atomically via the write() method.
 

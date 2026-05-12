@@ -8,10 +8,11 @@ coverage, time series, and observability forecasts for user-selected targets.
 To run the dashboard:
     python -m rubin_dash
 
-The dashboard will automatically:
-- Initialize a PostgreSQL database with user's target catalog
-- Launch a background data processing pipeline
-- Open the web interface in your default browser
+Upon startup, the dashboard:
+- Initializes a PostgreSQL database with user's target catalog
+- Populates historical observation data
+- Launches a background data processing pipeline
+- Opens the web interface in your default browser
 
 All configuration is defined in rubin_dash/config.py.
 """

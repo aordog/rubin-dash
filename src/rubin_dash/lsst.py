@@ -1,14 +1,17 @@
 """
 lsst.py: Access LSST Schedule Viewer and camera footprint data.
 
-This module provides an interface to the Rubin Schedule Viewer (RSV) service 
-and LSST camera geometry data. It enables queries for completed visits at 
-specific sky coordinates and provides camera footprint for 2D visits maps.
+This module provides an interface to real (Rubin Schedule Viewer; RSV service)
+or simulated (SIM_LSST_DB) databases, and LSST camera geometry data. It 
+enables queries for completed visits at specific sky coordinates and provides 
+camera footprint for 2D visits maps.
 
 Public API
 ----------
 - ``rsv_service`` - Query Rubin Schedule Viewer for observations.
-- ``get_metadata_rsv`` - Extract visit metadata for a target position.
+- ``sim_service`` - Query simulated LSST database for observations.
+- ``sim_service_range`` - Bulk query for observation range from simulated DB.
+- ``get_visit_metadata`` - Extract visit metadata for a target position.
 - ``get_camera`` - Load LSST camera footprint geometry.
 
 **Author:** Anna Ordog, for CanDIAPL
@@ -16,7 +19,6 @@ Public API
 
 import numpy as np
 import pandas as pd
-import os
 import requests
 from rubin_dash.utils import make_fake_bands, make_fake_rot
 import sqlite3
@@ -115,7 +117,28 @@ def rsv_service(date: str) -> pd.DataFrame:
     return pd.DataFrame(response.json())
 
 def sim_service(nightnum):
+    """Query simulated LSST database for observation visits on a night.
 
+    Retrieves observation data for a single night from the simulated LSST
+    database (SIM_LSST_DB). Returns visit information including sky
+    coordinates, rotation angles, and filter bands.
+
+    Parameters
+    ----------
+    nightnum : int
+        Night number identifying the observation night in the database.
+
+    Returns
+    -------
+    pd.DataFrame
+        Observation visit data with columns: s_ra, s_dec, rot, band, obs_id,
+        execution_status. Returns empty DataFrame if no observations found.
+
+    Notes
+    -----
+    Designed for querying individual nights. For bulk queries of multiple
+    nights, use sim_service_range() for better efficiency.
+    """
     visits = {}
 
     conn_sim = sqlite3.connect(SIM_LSST_DB)
@@ -138,18 +161,121 @@ def sim_service(nightnum):
     
     return pd.DataFrame(visits)
 
+def sim_service_range(min_night: int, max_night: int) -> dict:
+    """Query all observations for a range of nights from SIM_LSST_DB.
+
+    Efficiently retrieves observation data for all nights in a range in a 
+    single database query, organizing results by night number. This is about a
+    factor of 2 faster than calling sim_service() repeatedly for each night 
+    when populating historical data.
+
+    Parameters
+    ----------
+    min_night : int
+        Minimum night number (inclusive).
+    max_night : int
+        Maximum night number (inclusive).
+
+    Returns
+    -------
+    dict
+        Dictionary keyed by night number, where each value is a pd.DataFrame
+        containing observations for that night with columns: s_ra, s_dec, rot,
+        band, obs_id, execution_status. Returns empty dict if no observations 
+        found in range.
+
+    Notes
+    -----
+    Opens database connection once for the entire range, which has been 
+    observed to be a factor of 2 more efficient than repeated connections for 
+    individual nights.
+    """
+    visits_by_night = {}
+
+    conn_sim = sqlite3.connect(SIM_LSST_DB)
+    cursor = conn_sim.cursor()
+    cursor.execute("""
+        SELECT night, fieldRA, fieldDec, rotSkyPos, filter, observationID 
+        FROM observations 
+        WHERE night >= ? AND night <= ?
+        ORDER BY night
+    """, (min_night, max_night))
+    rows = cursor.fetchall()
+    conn_sim.close()
+
+    if len(rows) > 0:
+        # Group rows by night number
+        current_night = None
+        night_data = {}
+        
+        for row in rows:
+            night, ra, dec, rot, band, obs_id = row
+            
+            if night != current_night:
+                # New night encountered
+                if current_night is not None:
+                    # Save the previous night's data
+                    visits_by_night[current_night] = _create_visits_df(night_data)
+                current_night = night
+                night_data = {
+                    'ra': [],
+                    'dec': [],
+                    'rot': [],
+                    'band': [],
+                    'obs_id': []
+                }
+            
+            # Append to current night's data
+            night_data['ra'].append(ra)
+            night_data['dec'].append(dec)
+            night_data['rot'].append(rot)
+            night_data['band'].append(band)
+            night_data['obs_id'].append(obs_id)
+        
+        # Don't forget the last night
+        if current_night is not None:
+            visits_by_night[current_night] = _create_visits_df(night_data)
+
+    return visits_by_night
+
+def _create_visits_df(night_data: dict) -> pd.DataFrame:
+    """Helper function to create a visits DataFrame from night data.
+
+    Parameters
+    ----------
+    night_data : dict
+        Dictionary with keys 'ra', 'dec', 'rot', 'band', 'obs_id', 
+        each containing lists of values.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: s_ra, s_dec, rot, band, obs_id, execution_status.
+
+    """
+    visits = {}
+    visits["s_ra"] = np.array(night_data['ra'])
+    visits["s_dec"] = np.array(night_data['dec'])
+    visits["rot"] = np.array(night_data['rot'])
+    visits["band"] = np.array(night_data['band'])
+    visits["obs_id"] = np.array(night_data['obs_id'])
+    visits["execution_status"] = ['Performed'] * len(night_data['ra'])
+    
+    return pd.DataFrame(visits)
+
 def get_visit_metadata(visits,
                      ra_t: float,
                      dec_t: float):
-    """Extract visit metadata for a target position from RSV data.
+    """Extract visit metadata for a target position from an LSST database.
 
-    Filters observation visits from RSV data to find those within a 3-degree 
-    search radius of the target coordinates. 
+    Filters observation visits to find those within a 3-degree search radius
+    of the target coordinates. Extracts RA, Dec, band, and rotation angle
+    for matching visits.
 
     Parameters
     ----------
     visits : dict or pd.DataFrame
-        Visit data from rsv_service().
+        Visit data from rsv_service(), sim_service(), or sim_service_range().
     ra_t : float
         Target right ascension in degrees.
     dec_t : float
@@ -161,18 +287,19 @@ def get_visit_metadata(visits,
         Dictionary with keys:
         - 'ra': float array of visit RA values for target
         - 'dec': float array of visit Dec values for target
-        - 'band': array of bandpass assignments (simulated for now)
-        - 'rot': array of rotation angles (simulated for now)
+        - 'band': array of camera filters
+        - 'rot': array of camera rotation angles
 
     Notes
     -----
     Search radius is fixed at 3.0 degrees. Only visits with 
     execution_status == 'Performed' are included. Uses helper
-    _target_visits_idxs to identify matching visits. Band and rotation 
-    data are simulated via make_fake_bands() and make_fake_rot() from utils.py 
-    module for now.
-    TO DO: when newer LSST databases become available, read in actual values.
+    _target_visits_idxs to identify matching visits.
 
+    Band and rotation data handling:
+    - If available in input data, uses actual values
+    - Otherwise simulates values via make_fake_bands() and make_fake_rot()
+    from utils.py module
     """
     r = 3.0
     ra = np.array(visits["s_ra"])

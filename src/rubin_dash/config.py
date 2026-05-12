@@ -21,17 +21,17 @@ INITIAL_OFFSET = 0.0               # declination limit to filter targets
 # Server-side info
 PORT = 5000 # Server
 DEFAULT_USER_ID: int  = 1  # User ID. TO DO: REVISIT WHEN ADDING USERS!
-DB_NAME = "lsst_database"
+DB_NAME = "lsst_database"  # Name of user-specific database
 #OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
 OUTPUT_BASE = Path(__file__).parent.parent.parent
-DAYS_FORECAST = 7 
-LOC = coord.EarthLocation.of_site('LSST')
+DAYS_FORECAST = 60 # Number of days for which to calculate observability
+LOC = coord.EarthLocation.of_site('LSST') # Rubin location for obs. plots
 
 # Simulated LSST survey (for testing)
 QUERY_TYPE = 'SIM' # Options: RSV, SIM
-REFRESH_INTERVAL: int = 30 # refresh rate for simulated iterations
-SIM_HIST  = datetime(2025, 9, 1)
-SIM_START = datetime(2025, 9, 4)  # simulated days start
+REFRESH_INTERVAL: int = 90 # refresh rate for simulated iterations
+SIM_HIST  = datetime(2025, 9, 1) # simulated historical data (prior to query)
+SIM_START = datetime(2025, 11, 1)  # simulated days start
 SIM_END   = datetime(2025, 12, 31) # simulated days end
 VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
 SIM_LSST_DB = "baseline_v3.3_10yrs.db"

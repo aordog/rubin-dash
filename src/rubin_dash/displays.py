@@ -22,8 +22,6 @@ import plotly.io as pio
 import matplotlib.colors as mcolors
 import seaborn as sns
 from astropy.time import Time
-from astropy import coordinates as coord
-import ephem
 from datetime import timedelta
 
 from rubin_dash.config import VERBOSE, DAYS_FORECAST
@@ -375,11 +373,14 @@ def _make_html_visits_plot(data, idx_mem, maptype):
     """Generate time series plot of visits over time as HTML for web display.
 
     Creates a Plotly plot showing visit count vs. time for each filter band.
+    Includes markers and line styles to distinguish bands.
 
     Parameters
     ----------
     data : dict
         Time series data from _populate_times_series().
+    idx_mem : int
+        Member index within the group (0-based, used for title).
     maptype : str
         Either 'daily' (daily new visits) or 'total' (cumulative).
 
@@ -436,7 +437,28 @@ def _make_html_visits_plot(data, idx_mem, maptype):
     return fig_html
 
 def _populate_observability(gid, idx_mem, cur, date):
-    """
+    """Query and format observability forecast data from database.
+
+    Fetches observability hours for a specific target over the forecast
+    window (DAYS_FORECAST days from reference date). Also extracts target
+    coordinates for sky position visualization.
+
+    Parameters
+    ----------
+    gid : int
+        Group ID identifying the target group.
+    idx_mem : int
+        Member index within the group (0-based).
+    cur : psycopg2.cursor
+        Database cursor with DictCursor factory.
+    date : str or datetime
+        Reference date (typically today) for start of forecast window.
+
+    Returns
+    -------
+    dict
+        Observability data with keys: ra, dec (target position),
+        days_utc (astropy Time array), hours (observable hours per day).
     """
     data = {}
 
@@ -470,8 +492,6 @@ def _populate_observability(gid, idx_mem, cur, date):
         data['days_utc'] = Time(data['days_utc'])
 
     return data
-
-
 
 def _make_html_obs_plot(data, selected_date=None, window_days=5):
     """Generate observability forecast visualization as HTML for web display.
@@ -837,6 +857,8 @@ class TargetTimeSeries:
 
         Parameters
         ----------
+        idx_mem : int
+            Member index within the group (0-based, used for title).
         maptype : str
             Either 'daily' (daily new visits) or 'total' (cumulative).
 
@@ -885,17 +907,17 @@ class ObservabilityData:
         """Generate observability forecast visualization as HTML for 
         web display.
 
-        Creates a 2-panel Plotly figure showing: observable hours per day 
-        over next 30 days, and target elevation vs. time with day/night and 
+        Creates a 2-panel Plotly figure showing: observable hours per day
+        over next 30 days, and target elevation vs. time with day/night and
         unobservable (el < 15 deg) regions shaded.
 
         Parameters
         ----------
         selected_date : str, optional
-            ISO format date string (e.g., '2025-04-27'). The bottom panel will be 
-            zoomed to show range of: this date + window_days.
+            ISO format date string (e.g., '2025-04-27'). The bottom panel
+            will be zoomed to show range of: this date + window_days.
         window_days : int, optional
-            Number of days to show before and after selected_date (default: 5).
+            Number of days to show after selected_date (default: 5).
 
         Returns
         -------

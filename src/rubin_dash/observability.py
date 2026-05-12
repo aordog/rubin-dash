@@ -1,10 +1,16 @@
 """
-observability.py: Functions for calculating observability of targets
+observability.py: Calculate target observability and elevation tracking.
+
+This module computes when astronomical targets are observable from the Vera
+C. Rubin Observatory given their celestial coordinates. Observability is
+determined by source elevation angle and night/day constraints. Functions 
+provide both summary statistics (hours observable per night) and zoomed-in 
+time series (elevation vs. time) for target visualization and forecasting.
 
 Public API
 ----------
-- ``daily_observability`` - Calculate hours source is observable.
-- ``elevation_series``    - Calculate elevation versus time.
+- ``daily_observability`` - Calculate hours source is observable per night.
+- ``el_vs_time`` - Calculate elevation versus time series for visualization.
 
 **Author:** Anna Ordog, for CanDIAPL
 """
@@ -16,8 +22,35 @@ import ephem
 from rubin_dash.config import LOC
 
 def daily_observability(ra_t, dec_t, day):
+    """Calculate hours a target is observable during a night.
 
-    dt =  5.0/60. # hours
+    Computes the duration for which a target is above the minimum elevation
+    threshold (15 degrees) during nighttime (between sunset and sunrise) on
+    a given date. Uses 5-minute time sampling for accuracy.
+
+    Parameters
+    ----------
+    ra_t : float
+        Target right ascension in degrees.
+    dec_t : float
+        Target declination in degrees.
+    day : str or datetime
+        Query date (ISO format string or datetime object).
+
+    Returns
+    -------
+    float
+        Observable hours during the night (decimal hours). Returns 0 if
+        target never rises above 15 degrees during nighttime.
+
+    Notes
+    -----
+    - Minimum elevation cutoff is fixed at 15 degrees
+    - Nighttime is defined as time between sunset and next day sunrise
+    - Observatory location is defined by LOC in config.py
+    - Time sampling interval is 5 minutes
+    """
+    dt = 5.0 / 60.  # hours
 
     start_date = Time(day).iso
 
@@ -64,10 +97,48 @@ def daily_observability(ra_t, dec_t, day):
     return hrs
 
 def el_vs_time(ra_t, dec_t, day):
+    """Calculate elevation versus time for target visualization.
 
+    Computes target elevation (altitude) as a function of time over a 5-day
+    window, along with sunrise/sunset times for display of day/night regions.
+    Useful for visualizing the sky positions giving rise to the observability
+    hours reported by daily_observability.
+
+    Parameters
+    ----------
+    ra_t : float
+        Target right ascension in degrees.
+    dec_t : float
+        Target declination in degrees.
+    day : str or datetime
+        Reference date for start of observation window (ISO format string or
+        datetime object).
+
+    Returns
+    -------
+    tuple
+        (t_utc, el, sunrise_list, sunset_list) where:
+        - t_utc : astropy.time.Time array
+            Times at which elevation is computed (5+ days, 30-min intervals).
+        - el : np.ndarray
+            Elevation angles (degrees) corresponding to t_utc times.
+        - sunrise_list : list
+            Sunrise times (datetime) for each day in the window.
+        - sunset_list : list
+            Sunset times (datetime) for each day in the window.
+
+    Notes
+    -----
+    - Hours observable per night is calculate here as an optional check against
+      the values from daily_observability, but is not currently used.
+    - Time sampling interval is 30 minutes
+    - Window covers 5 days from the reference date
+    - Observatory location is defined by LOC in config.py
+    - Sunrise/sunset times expand 1 day before and after the main window
+    """
     ##### Constants - eventually convert to inputs ####
-    Ndays  =  5.0 # days
-    dt =  30.0/60. # hours
+    Ndays = 5.0  # days
+    dt = 30.0 / 60.  # hours
 
     start_date = Time(day).iso
 

@@ -47,22 +47,27 @@ def main() -> None:
     Orchestrates the complete startup sequence for the dashboard:
 
     1. Sets up logging and output directory with timestamped files
-    2. Initializes PostgreSQL database with user's target catalog
-    3. Creates Flask application with shared state management
-    4. Spawns background threads:
+    2. Initializes PostgreSQL database
+    3. Loads user's target catalog and camera footprint
+    4. Populates database with historical observation data
+    5. Initializes daily observability forecast data
+    6. Creates Flask application with shared state management
+    7. Spawns background threads:
        - data_loop: periodic database updates with observation data
        - monitor_resources: CPU and memory profiling (writes CSV)
-       - stress_test: automated interaction testing (if MEM_TEST_MODE enabled)
-    5. Opens web browser to dashboard URL
-    6. Runs Flask server (blocking)
-    7. On shutdown: saves monitoring plots and closes log file
+       - stress_test: automated interaction testing if MEM_TEST_MODE
+         enabled
+    8. Opens web browser to dashboard URL
+    9. Runs Flask server (blocking)
+    10. On shutdown: saves monitoring plots and closes log file
 
     The dashboard runs as a multi-threaded application:
     - Main thread: Flask web server
-    - Background threads: data pipeline, resource monitoring, stress testing
+    - Background threads: data pipeline, resource monitoring, and
+      optional stress testing
 
-    Log output is simultaneously written to terminal and timestamped log
-    file via Logger multi-destination handler.
+    Log output is simultaneously written to terminal and timestamped
+    log file via Logger multi-destination handler.
 
     Configuration Parameters
     --------
@@ -77,7 +82,8 @@ def main() -> None:
     ------
     Exception
         Any errors during database setup or Flask initialization will
-        propagate. Resource monitoring thread is cleaned up in finally block.
+        propagate. Resource monitoring thread is cleaned up in the
+        finally block.
 
     Notes
     -----

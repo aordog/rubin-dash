@@ -69,11 +69,12 @@ def create_app(
     def _render_plots(gn: int, mn: int, maptype: str, date) -> dict:
         """Generate visualization plots for a chosen target.
 
-        Creates the interactive HTML visualizations: 
+        Creates the interactive HTML visualizations:
         - 2D visits map for the region surrounding the target
         - Visits time series for the target
-        - Future observability of the target. 
-        Uses a short-lived cursor to minimize database connection overhead, 
+        - Future observability of the target
+
+        Uses a short-lived cursor to minimize database connection overhead,
         then reclaims memory.
 
         Parameters
@@ -262,11 +263,15 @@ def create_app(
         """Check for data updates.
 
         Polling endpoint for client-side scripts to detect when new data are
-        available. Clients compare the returned version with their cached 
-        version to determine if a page refresh is needed. Currently this
-        refresh happens every `REFRESH_INTERVAL` as defined in the config.py
-        file, but in the final version this will poll for a new date to provide
-        daily updates from the Rubin database.
+        available. Clients compare the returned version with their cached
+        version to determine if a page refresh is needed.
+
+        Current Implementation:
+            Refresh happens every `REFRESH_INTERVAL` as defined in config.py.
+
+        Future Version:
+            Will poll for a new date to provide daily updates from the Rubin
+            database.
 
         Returns
         -------
@@ -284,9 +289,12 @@ def create_app(
         Polling endpoint that returns information about the next scheduled data
         update and the current state of any in-progress update. Used by the
         client to display progress information and update the countdown timer.
-        Currently this timer counts down the `REFRESH_INTERVAL` defined in the 
-        config.py file, but in the final version this will be a countdown to
-        the following date.
+
+        Current Implementation:
+            Timer counts down the `REFRESH_INTERVAL` defined in config.py.
+
+        Future Version:
+            Will countdown to the following date.
 
         Returns
         -------
