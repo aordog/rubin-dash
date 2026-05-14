@@ -39,13 +39,42 @@ rubin-dash/
 ```
 ---
 
-## Prototyping workflow
+## Installation of demo version
+
+1. Clone the project repository from github:
+
+    `git clone git@github.com:aordog/rubin-dash.git`
+
+2. For the demo version, copy the LSST simulated database file `baseline_v3.3_10yrs.db` into the `rubin-dash` directory. Note: this is a ~800 MB file, not shipped with the code from github.
+
+3. Switch to the `rubin-dash` directory, create a new environment (recommended to avoid dependency conflicts), and activate the environment:
+
+    `python -m venv .rubin_test_venv`
+
+    `source .rubin_test_venv/bin/activate`
+
+4. Install the dashboard in editable mode:
+
+    `pip install -e .`
+
+
+
+## Demo/Prototyping workflow
 
 Set the following parameters in `config.py`:
-- `QUERY_FILE` - the input file with RA/dec coordinates of list of tartets.
+- `QUERY_FILE` - the input file with RA/dec coordinates of list of targets (code ships with two examples: `small_query.txt`, `large_query.txt`).
+- `QUERY_TYPE` - `SIM` to use simulated database; `RSV` to use Rubin Schedule Viewer (currently not available).
 - `OUTPUT_BASE` - where you would like the log files to be stored (defaults to `logs` directory in the same directory as the codebase).
 - `REFRESH_INTERVAL` - cadence (in seconds) at which to simulate dates incrementing.
-- `SIM_START`, `SIM_END` - start and end dates to simulate (make sure these are within Rubin DP1 or current pre-LSST observing run).
+- `SIM_HIST` - earliest date to include in historical population of the target list-specific database.
+- `SIM_START` - the simulated start date of the user query (must be later than `SIM_HIST`).
+- `SIM_END` - the simulated date on which to end updating the dashboard (must be later than `SIM_START`)
+- `DAYS_FORECAST` - the number of ahead days for which to calculate the observability of each target.
+
+Note, **using the smaller example query**, before the dashboard is displayed:
+
+1. The 'historical' data (between `SIM_HIST` and `SIM_START`) takes ~1 s per date to populate.
+2. The 'forecast' obervability data (`DAYS_FORECAST`) takes ~4 s per date to populate.
 
 Run the code like this:
 
