@@ -661,14 +661,14 @@ def _make_html_obs_plot(data, selected_date=None, window_days=5):
     )
 
     # Set top panel x-axis range (full 30 days)
-    fig.update_xaxes(title_text="Date (UTC)", 
+    fig.update_xaxes(title_text="Date", 
                      range=[data['days_utc'].iso[0], data['days_utc'].iso[-1]], 
                      showgrid=False, tickformat="%d/%m/%y",
                      showline=True, mirror=True,
                      row=1, col=1)
     
     # Set bottom panel x-axis range (zoomed to window around selected_date)
-    fig.update_xaxes(title_text="Date (UTC)", 
+    fig.update_xaxes(title_text="Date", 
                      range=[bottom_x_min, bottom_x_max],
                      showgrid=False, tickformat="%d/%m/%y",
                      showline=True, mirror=True,
