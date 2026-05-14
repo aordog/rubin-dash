@@ -92,7 +92,10 @@ def daily_observability(ra_t, dec_t, day):
     idx_count = np.where((Time(t_utc).mjd>Time(sunset_list[0]).mjd) & 
                             (Time(t_utc).mjd<Time(sunrise_list[1]).mjd) & 
                             (el>15))[0]
-    hrs = (Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.
+    if len(idx_count) > 0:
+        hrs = (Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.
+    else:
+        hrs = 0.0
 
     return hrs
 
@@ -190,7 +193,10 @@ def el_vs_time(ra_t, dec_t, day):
         idx_count = np.where((Time(t_utc).mjd>Time(sunset_list[i]).mjd) & 
                              (Time(t_utc).mjd<Time(sunrise_list[i+1]).mjd) & 
                              (el>15))[0]
-        hrs.append((Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.)
+        if len(idx_count) > 0:
+            hrs.append((Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.)
+        else:
+            hrs.append(0.0)
 
     #print(hrs)
     
