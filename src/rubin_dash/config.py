@@ -14,7 +14,7 @@ import astropy.units as u
 from astropy import coordinates as coord
 
 ########### USER INPUTS #########
-QUERY_FILE     = "small_query.txt" # File with user-selected targets
+QUERY_FILE     = "medium_query.txt" # File with user-selected targets
 INITIAL_OFFSET = 0.0               # declination limit to filter targets
 #################################
 
@@ -29,9 +29,9 @@ LOC = coord.EarthLocation.of_site('LSST') # Rubin location for obs. plots
 
 # Simulated LSST survey (for testing)
 QUERY_TYPE = 'SIM' # Options: RSV, SIM
-REFRESH_INTERVAL: int = 90 # refresh rate for simulated iterations
+REFRESH_INTERVAL: int = 60 # refresh rate for simulated iterations
 SIM_HIST  = datetime(2025, 9, 1) # simulated historical data (prior to query)
-SIM_START = datetime(2025, 11, 1)  # simulated days start
+SIM_START = datetime(2025, 9, 4)  # simulated days start
 SIM_END   = datetime(2025, 12, 31) # simulated days end
 VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
 SIM_LSST_DB = "baseline_v3.3_10yrs.db"
