@@ -71,10 +71,10 @@ Set the following parameters in `config.py`:
 - `SIM_END` - the simulated date on which to end updating the dashboard (must be later than `SIM_START`)
 - `DAYS_FORECAST` - the number of ahead days for which to calculate the observability of each target.
 
-Note, **using the smaller example query**, before the dashboard is displayed:
+Note, **using the medium example query** (663 targets), before the dashboard is displayed:
 
-1. The 'historical' data (between `SIM_HIST` and `SIM_START`) takes ~1 s per date to populate.
-2. The 'forecast' obervability data (`DAYS_FORECAST`) takes ~4 s per date to populate.
+1. The 'historical' data (between `SIM_HIST` and `SIM_START`) takes ~6 s per date to populate.
+2. The 'forecast' obervability data (`DAYS_FORECAST`) takes ~1.5 s per date to populate.
 
 Run the code like this:
 

@@ -9,6 +9,7 @@ time series (elevation vs. time) for target visualization and forecasting.
 
 Public API
 ----------
+- ``get_az_el`` - Calculate azimuth and elevation arrays for targets.
 - ``daily_observability`` - Calculate hours source is observable per night.
 - ``el_vs_time`` - Calculate elevation versus time series for visualization.
 
@@ -21,7 +22,55 @@ import ephem
 
 from rubin_dash.config import LOC
 
-def daily_observability(ra_t, dec_t, day):
+def get_az_el(ra_arr, dec_arr, day):
+    """Calculate azimuth and elevation for targets over a night.
+
+    Computes azimuth and altitude (elevation) angles for one or more targets
+    as a function of time throughout a night. Uses 5-minute time sampling to
+    generate accurate trajectories. Results are suitable for passing directly
+    to daily_observability() for hours calculation.
+
+    Parameters
+    ----------
+    ra_arr : float or np.ndarray
+        Target right ascension(s) in degrees. Can be scalar or array.
+    dec_arr : float or np.ndarray
+        Target declination(s) in degrees. Can be scalar or array.
+    day : str or datetime
+        Query date (ISO format string or datetime object).
+
+    Returns
+    -------
+    tuple of (np.ndarray, np.ndarray, astropy.time.Time)
+        (az, el, t_utc) where:
+        - az : Azimuth angles (degrees)
+        - el : Elevation angles (degrees)
+        - t_utc : astropy.time.Time array for corresponding times
+
+    Notes
+    -----
+    - Time sampling interval is 5 minutes
+    - Results are broadcast for vectorized computation: shape (N targets, M times)
+    - Observatory location is defined by LOC in config.py
+    """
+
+    dt = 5.0 / 60.  # hours
+
+    start_date = Time(day).iso
+
+    # Set up time array:
+    dmjd_arr = np.arange(0, 2+dt/24., dt/24.)
+    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
+
+    c = coord.SkyCoord(ra_arr, dec_arr, frame='icrs', unit='deg')
+
+    # Broadcast: coords shape (N, 1), times shape (1, M)  -> result shape (N, M)
+    altaz_frame = coord.AltAz(obstime=t_utc[np.newaxis, :], location=LOC)
+    result = c[:, np.newaxis].transform_to(altaz_frame)
+
+    return result.az.deg, result.alt.deg, t_utc
+
+def daily_observability(el_t, day, t_utc):
     """Calculate hours a target is observable during a night.
 
     Computes the duration for which a target is above the minimum elevation
@@ -30,12 +79,11 @@ def daily_observability(ra_t, dec_t, day):
 
     Parameters
     ----------
-    ra_t : float
-        Target right ascension in degrees.
-    dec_t : float
-        Target declination in degrees.
+    el_t : float
+        Target elevation in degrees.
     day : str or datetime
         Query date (ISO format string or datetime object).
+    t_utc : array of time values for the day (from `get_az_el`)
 
     Returns
     -------
@@ -50,22 +98,9 @@ def daily_observability(ra_t, dec_t, day):
     - Observatory location is defined by LOC in config.py
     - Time sampling interval is 5 minutes
     """
-    dt = 5.0 / 60.  # hours
 
     start_date = Time(day).iso
 
-    # Set up time array:
-    dmjd_arr = np.arange(0, 2+dt/24., dt/24.)
-    t_utc = Time(start_date, format="iso", scale="utc") + dmjd_arr
-
-    # Get alt/az coords of target vs time:
-    c = coord.SkyCoord(ra_t, dec_t, frame='icrs', unit='deg')
-    aa_frame = coord.AltAz(obstime = t_utc, location = LOC)
-    c_altaz  = c.transform_to(aa_frame)
-    az = c_altaz.az.deg.copy()
-    az[az > 180.] = az[az > 180.] - 360.
-    el  = c_altaz.alt.deg
-    
     # Set up array of days (expand 1 day beyond range in both directions):
     days_mjd = np.arange(-1.0, 1.0, 1.0)
     days_utc = Time(start_date, format="iso", scale="utc") + days_mjd
@@ -91,7 +126,7 @@ def daily_observability(ra_t, dec_t, day):
 
     idx_count = np.where((Time(t_utc).mjd>Time(sunset_list[0]).mjd) & 
                             (Time(t_utc).mjd<Time(sunrise_list[1]).mjd) & 
-                            (el>15))[0]
+                            (el_t>15))[0]
     if len(idx_count) > 0:
         hrs = (Time(t_utc[idx_count[-1]]).mjd - Time(t_utc[idx_count[0]]).mjd)*24.
     else:
@@ -141,7 +176,7 @@ def el_vs_time(ra_t, dec_t, day):
     """
     ##### Constants - eventually convert to inputs ####
     Ndays = 5.0  # days
-    dt = 30.0 / 60.  # hours
+    dt = 5.0 / 60.  # hours
 
     start_date = Time(day).iso
 

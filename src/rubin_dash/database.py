@@ -34,7 +34,7 @@ from rubin_dash.lsst import (
     rsv_service,
     sim_service_range,
 )
-from rubin_dash.observability import daily_observability
+from rubin_dash.observability import daily_observability, get_az_el
 
 import subprocess
 from rubin_dash.config import (
@@ -357,13 +357,14 @@ def _insert_observability(cur, date, member_id, hrs):
     """
 
     # Convert numpy types to native Python types for database compatibility
+    member_id_value = int(member_id) if isinstance(member_id, (np.integer, np.int64)) else member_id
     hrs_value = float(hrs) if isinstance(hrs, (np.floating, np.integer)) else hrs
 
     cur.execute(f"""
         INSERT INTO member_observability
                (time, member_id, hrs_obs)
         VALUES (%s, %s, %s)
-    """, (date, member_id, hrs_value))
+    """, (date, member_id_value, hrs_value))
 
 def _compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
     """Count visits for a group member target from a mask grid.
@@ -711,8 +712,8 @@ def populate_forecast(conn, cur, user_id, date, shared_state=None):
     """Populate observability forecast data for all targets.
 
     Computes and stores daily observability hours for all member targets
-    for a given date. Inserts results into member_observability table and
-    commits the transaction.
+    for a given date using vectorized azimuth/elevation calculations.
+    Inserts results into member_observability table and commits the transaction.
 
     Parameters
     ----------
@@ -730,24 +731,26 @@ def populate_forecast(conn, cur, user_id, date, shared_state=None):
 
     print(f'Populating observability for {date}')
 
-    # Access the groups table, specifying ordering by group_id:
-    cur.execute("SELECT group_id, ra_gr, dec_gr FROM groups WHERE user_id = %s ORDER BY group_id",
-        (user_id,))
-    rows = cur.fetchall()
+    # Query all members for this user directly, joining with groups table
+    # to filter by user_id:
+    cur.execute("""
+        SELECT m.member_id, m.ra_mem, m.dec_mem FROM members m
+        JOIN groups g ON m.group_id = g.group_id
+        WHERE g.user_id = %s
+        ORDER BY m.group_id, m.member_idx
+        """, (user_id,))
+    
+    # Process each member:
+    members  = cur.fetchall()
+    mem_ids  = np.array([mem['member_id'] for mem in members])
+    ra_mems  = np.array([mem['ra_mem'] for mem in members])
+    dec_mems = np.array([mem['dec_mem'] for mem in members])
 
-    # Loop through all groups:
-    for i, row in enumerate(rows):
+    az, el, t_utc = get_az_el(ra_mems, dec_mems, date)
 
-        # Load members for the selected group:
-        cur.execute("""
-                SELECT member_id, ra_mem, dec_mem FROM members
-                WHERE group_id = %s ORDER BY member_idx
-                """, (row['group_id'],))
-        
-        for mem in cur.fetchall():
-
-            hrs = daily_observability(mem['ra_mem'], mem['dec_mem'], date)
-            _insert_observability(cur, date, mem['member_id'], hrs)
+    for i in range(0,len(mem_ids)):
+        hrs = daily_observability(el[i], date, t_utc)
+        _insert_observability(cur, date, mem_ids[i], hrs)
 
     conn.commit()
     return
