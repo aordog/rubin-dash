@@ -248,7 +248,8 @@ def _make_html_visits_map(data, idx_mem, maptype):
         Nmin = min(arr.min() for arr in data['masks']['total'].values())
     
     # Create integer tick values for colorbar
-    tickvals = list(range(int(Nmin), int(Nmax)+1))
+    space = int(np.ceil((Nmax - Nmin)/10))
+    tickvals = list(np.arange(Nmin, Nmax+space, space))
     ticktext = [str(i) for i in tickvals]
 
     for row in range(1, 3):  # rows 1 and 2
