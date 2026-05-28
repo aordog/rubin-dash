@@ -34,7 +34,7 @@ SIM_HIST  = datetime(2025, 9, 1) # simulated historical data (prior to query)
 SIM_START = datetime(2025, 9, 4)  # simulated days start
 SIM_END   = datetime(2025, 12, 31) # simulated days end
 VERBOSE = False  # Show debug columns in table (gr_name, gr_num, mem_num)
-SIM_LSST_DB = "baseline_v3.3_1yr.db"
+SIM_LSST_DB = "baseline_v3.3_200day.db"
 
 # Stress testing
 MEM_TEST_MODE = False  # Turn on memory stress testing (simulated clicks)
