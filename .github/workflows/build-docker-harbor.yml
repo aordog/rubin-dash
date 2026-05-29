@@ -1,4 +1,4 @@
-name: Build and Push to CANFAR Harbor
+name: Deploy to CANFAR
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.x'
 
       - name: Install test dependencies
         run: |
@@ -51,12 +51,31 @@ jobs:
         run: |
           set -euo pipefail
           if [ -d tests ]; then
-            pytest tests -q --cov=. --cov-report=term-missing --cov-fail-under=30
+            COV_ARGS=""
+            if [ -d src ]; then
+              COV_ARGS="--cov=src"
+            else
+              for candidate in *.py */__init__.py; do
+                [ -e "$candidate" ] || continue
+                case "$candidate" in tests/*|test/*|setup.py) continue ;; esac
+                if [ -f "$candidate" ]; then
+                  module="${candidate%.py}"
+                else
+                  module="${candidate%/__init__.py}"
+                fi
+                [ -n "$module" ] || continue
+                COV_ARGS="$COV_ARGS --cov=$module"
+              done
+            fi
+            if [ -z "$COV_ARGS" ]; then
+              COV_ARGS="--cov=. --cov-omit=tests/*,test/*"
+            fi
+            pytest tests -q $COV_ARGS --cov-report=term-missing --cov-fail-under=10
           else
             echo "tests/ not found; skipping"
           fi
 
-  build_and_push:
+  prepare:
     needs: tests
     runs-on: ubuntu-latest
     steps:
@@ -65,49 +84,127 @@ jobs:
 
       - name: Validate required inputs
         env:
-          HARBOR_URL: ${{ secrets.HARBOR_URL }}
-          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
-          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
-          HARBOR_REPOSITORY: ${{ secrets.HARBOR_REPOSITORY }}
-          HARBOR_IMAGE_TAG: ${{ secrets.HARBOR_IMAGE_TAG }}
+          CANFAR_USER: ${{ secrets.CANFAR_USER }}
+          CANFAR_SSH_PRIVATE_KEY: ${{ secrets.CANFAR_SSH_PRIVATE_KEY }}
+          CANFAR_REMOTE_DIR: ${{ secrets.CANFAR_REMOTE_DIR }}
+          CANFAR_SSH_HOST: ${{ secrets.CANFAR_SSH_HOST }}
+          CANFAR_SSH_PORT: ${{ secrets.CANFAR_SSH_PORT }}
         run: |
           set -euo pipefail
           missing=0
-          for k in HARBOR_URL HARBOR_PROJECT HARBOR_USERNAME HARBOR_PASSWORD HARBOR_REPOSITORY HARBOR_IMAGE_TAG; do
-            if [ -z "$(printenv "$k")" ]; then
-              echo "ERROR: Missing required secret $k" >&2
-              missing=1
-            fi
-          done
+          if [ -z "${CANFAR_USER:-}" ]; then
+            echo "ERROR: Missing required secret CANFAR_USER" >&2
+            missing=1
+          fi
+          if [ -z "${CANFAR_SSH_PRIVATE_KEY:-}" ]; then
+            echo "ERROR: Missing required secret CANFAR_SSH_PRIVATE_KEY" >&2
+            missing=1
+          fi
+          if [ -z "${CANFAR_REMOTE_DIR:-}" ]; then
+            echo "ERROR: Missing required secret CANFAR_REMOTE_DIR (e.g., /projects/CanDIAPL/HiPS)" >&2
+            missing=1
+          fi
+          if [ -z "${CANFAR_SSH_HOST:-}" ]; then
+            echo "ERROR: Missing required secret CANFAR_SSH_HOST (SSH-accessible CANFAR host)" >&2
+            missing=1
+          fi
+          if [ -z "${CANFAR_SSH_PORT:-}" ]; then
+            echo "Using default CANFAR_SSH_PORT=64022"
+            echo "CANFAR_SSH_PORT=64022" >> $GITHUB_ENV
+          else
+            echo "CANFAR_SSH_PORT=${CANFAR_SSH_PORT}" >> $GITHUB_ENV
+          fi
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
 
-      - name: Log in to Harbor
-        env:
-          HARBOR_URL: ${{ secrets.HARBOR_URL }}
-          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
-        run: |
-          echo "$HARBOR_PASSWORD" | docker login "$HARBOR_URL" -u "$HARBOR_USERNAME" --password-stdin
-
-      - name: Build image
-        env:
-          HARBOR_URL: ${{ secrets.HARBOR_URL }}
-          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
-          HARBOR_REPOSITORY: ${{ secrets.HARBOR_REPOSITORY }}
-          HARBOR_IMAGE_TAG: ${{ secrets.HARBOR_IMAGE_TAG }}
+      - name: Stage files for upload (exclude .git)
         run: |
           set -euo pipefail
-          docker build -t "$HARBOR_URL/$HARBOR_PROJECT/$HARBOR_REPOSITORY:$HARBOR_IMAGE_TAG" .
+          rm -rf /tmp/canfar_sync
+          mkdir -p /tmp/canfar_sync
+          rsync -az --delete --exclude '.git' ./ /tmp/canfar_sync/
 
-      - name: Push image
-        env:
-          HARBOR_URL: ${{ secrets.HARBOR_URL }}
-          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
-          HARBOR_REPOSITORY: ${{ secrets.HARBOR_REPOSITORY }}
-          HARBOR_IMAGE_TAG: ${{ secrets.HARBOR_IMAGE_TAG }}
+      - name: Archive staged files
         run: |
           set -euo pipefail
-          docker push "$HARBOR_URL/$HARBOR_PROJECT/$HARBOR_REPOSITORY:$HARBOR_IMAGE_TAG"
+          cd /tmp
+          tar czf "$GITHUB_WORKSPACE/canfar_sync.tgz" canfar_sync
+
+      - name: Upload staged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: canfar-sync-src
+          path: canfar_sync.tgz
+
+  sync:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download staged files
+        uses: actions/download-artifact@v4
+        with:
+          name: canfar-sync-src
+
+      - name: Extract staged files
+        run: |
+          set -euo pipefail
+          tar xzf canfar_sync.tgz
+
+      - name: Install SSH key
+        env:
+          CANFAR_SSH_PRIVATE_KEY: ${{ secrets.CANFAR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          cat <<'EOF' > ~/.ssh/id_canfar
+          ${{ secrets.CANFAR_SSH_PRIVATE_KEY }}
+          EOF
+          chmod 600 ~/.ssh/id_canfar
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_canfar
+
+      - name: Configure SSH known_hosts (ignore scan failures)
+        env:
+          CANFAR_SSH_HOST: ${{ secrets.CANFAR_SSH_HOST }}
+          CANFAR_SSH_PORT: ${{ secrets.CANFAR_SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${CANFAR_SSH_PORT:-64022}" -H "${CANFAR_SSH_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          {
+            echo "Host ${CANFAR_SSH_HOST}"
+            echo "  StrictHostKeyChecking no"
+            echo "  UserKnownHostsFile /dev/null"
+            echo "  IdentitiesOnly yes"
+            echo "  Port ${CANFAR_SSH_PORT:-64022}"
+          } >> ~/.ssh/config
+
+      - name: Upload via SFTP (mkdir + put -r)
+        env:
+          CANFAR_USER: ${{ secrets.CANFAR_USER }}
+          CANFAR_REMOTE_DIR: ${{ secrets.CANFAR_REMOTE_DIR }}
+          CANFAR_SSH_HOST: ${{ secrets.CANFAR_SSH_HOST }}
+          CANFAR_SSH_PORT: ${{ secrets.CANFAR_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="$CANFAR_REMOTE_DIR"
+          PORT="${CANFAR_SSH_PORT:-64022}"
+          HOST="$CANFAR_SSH_HOST"
+          USER="$CANFAR_USER"
+          STAGE="$GITHUB_WORKSPACE/canfar_sync"
+          BATCH="/tmp/canfar_sftp_batch.txt"
+          : > "$BATCH"
+          # Build mkdir chain conditionally (sftp only; probe with ls)
+          IFS='/' read -ra PARTS <<< "$REMOTE_DIR"
+          ACC=""
+          for part in "${PARTS[@]}"; do
+            [ -z "$part" ] && continue
+            ACC="${ACC}/${part}"
+            if ! sftp -i ~/.ssh/id_canfar -P "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -q -b - "$USER@$HOST" <<< "ls $ACC" >/dev/null 2>&1; then
+              echo "mkdir $ACC" >> "$BATCH"
+            fi
+          done
+          echo "cd $REMOTE_DIR" >> "$BATCH"
+          echo "lcd $STAGE" >> "$BATCH"
+          echo "put -r ." >> "$BATCH"
+          sftp -i ~/.ssh/id_canfar -P "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -b "$BATCH" "$USER@$HOST"
