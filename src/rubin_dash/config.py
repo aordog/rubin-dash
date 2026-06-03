@@ -19,7 +19,7 @@ INITIAL_OFFSET = 0.0               # declination limit to filter targets
 #################################
 
 # Server-side info
-PORT = 5000 # Server
+PORT = 8000 # Server
 DEFAULT_USER_ID: int  = 1  # User ID. TO DO: REVISIT WHEN ADDING USERS!
 DB_NAME = "lsst_database"  # Name of user-specific database
 #OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
