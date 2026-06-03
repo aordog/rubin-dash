@@ -347,6 +347,7 @@ def get_camera():
     from rubin_scheduler.utils import (LsstCameraFootprint,
                                        _angular_separation)
     print('Getting camera')
-    camera = LsstCameraFootprint(units='degrees')
+    camera = LsstCameraFootprint(units='degrees',
+                                 footprint_file='fov_map.npz')
 
     return camera
