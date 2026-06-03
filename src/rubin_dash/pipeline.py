@@ -18,6 +18,7 @@ Public API
 from __future__ import annotations
 
 import ctypes
+import ctypes.util
 import gc
 import time
 from typing import TYPE_CHECKING
@@ -49,19 +50,29 @@ from rubin_dash.lsst import rsv_service, sim_service
 if TYPE_CHECKING:
     from rubin_dash.state import SharedState
 
-# C-level memory reclamation:
-_libc = ctypes.CDLL("libc.so.6")
+# C-level memory reclamation (glibc-specific; unavailable on macOS/Windows):
+_libc = None
+_has_malloc_trim = False
+try:
+    _libc = ctypes.CDLL(ctypes.util.find_library("c"))
+    # malloc_trim only exists in glibc; probe before relying on it.
+    _libc.malloc_trim
+    _has_malloc_trim = True
+except (OSError, AttributeError):
+    _has_malloc_trim = False
 
 def _reclaim_memory() -> None:
     """Force garbage collection and return memory to the OS.
 
-    In long-running processes Python's garbage collector and malloc can 
-    fragment memory. This function triggers garbage collection and calls libc's
-    malloc_trim(0) to return freed memory pages to the OS, keeping memory usage 
-    stable over extended periods.
+    In long-running processes Python's garbage collector and malloc can
+    fragment memory. This function triggers garbage collection and, where
+    available (glibc/Linux), calls ``malloc_trim(0)`` to return freed memory
+    pages to the OS. On platforms without ``malloc_trim`` (e.g. macOS), it
+    falls back to ``gc.collect()`` alone.
     """
     gc.collect()
-    _libc.malloc_trim(0)
+    if _has_malloc_trim:
+        _libc.malloc_trim(0)
 
 
 # The main data loop:
