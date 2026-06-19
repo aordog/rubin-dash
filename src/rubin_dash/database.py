@@ -22,6 +22,7 @@ import numpy as np
 import psycopg2
 from psycopg2 import extras
 from datetime import timedelta
+import csv
 from rubin_dash.utils import (
     remove_high_dec,
     simulation_dates, 
@@ -47,20 +48,22 @@ VISIT_COLS = [f'{b}visits' for b in BANDS]
 
 
 def _read_csv_file(file_in, declim):
-    """Read target catalog from CSV file with declination filtering.
+    """Read target catalog from .csv or .txt file with declination filtering.
 
-    Parses a formatted catalog file (e.g., NED query results) and extracts 
-    RA and Dec coordinates, limiting targets to the LSST declination limit
-    defined by INITIAL_OFFSET in config.py to discard targets the user may
-    have included that will not be observable.
-    TO DO: include warning for user stating not all their sources are being
-    tracked.
+    Parses a formatted catalog file (e.g., NED query results or 
+    user-generated table) and extracts RA and Dec coordinates, limiting 
+    targets to the LSST declination limit defined by INITIAL_OFFSET in 
+    config.py to discard targets the user may have included that will not be 
+    observable.
 
     Parameters
     ----------
     file_in : str
-        Path to input catalog file with pipe-delimited format.
-        TO DO: make this more flexible!
+        Path to input catalog file (.csv or .txt). Requirements/properties:
+        - Must contain columns with 'RA' and 'dec' (case-insensitive; 
+          extra text in column names such as 'target_ra' allowed)
+        - Must contain exactly one header row, no additional rows of text.
+        - Delimiter is auto-detected
     declim : float
         Declination limit in degrees. Targets with dec > declim are
         excluded from the returned list.
@@ -71,22 +74,42 @@ def _read_csv_file(file_in, declim):
         (ra_list, dec_list) — Arrays of RA and Dec coordinates (degrees).
     """
 
-    with open(file_in, 'r') as f:
-        lines = f.readlines()
+    with open(file_in, 'r', encoding='utf-8', newline='') as f:
+        sample_data = f.read(2048)
+        dialect = csv.Sniffer().sniff(sample_data)
 
-    header_idx = next(i for i, line in enumerate(lines) if line.startswith('No.'))
+    with open(file_in, 'r', encoding='utf-8', newline='') as f:
+        lines = f.readlines()
+        header_lc = lines[0].lower().split(sep=dialect.delimiter)
+        index_ra = next((i for i, s in enumerate(header_lc) if 'ra' in s), -1)
+        index_dec = next((i for i, s in enumerate(header_lc) if 'dec' in s), -1)
+    ra_name  = str(lines[0].strip().split(sep=dialect.delimiter)[index_ra])
+    dec_name = str(lines[0].strip().split(sep=dialect.delimiter)[index_dec])
+
+    print('=====================================================')
+    print(f'Reading input file with:')
+    print(f'RA column = {ra_name}')
+    print(f'dec column = {dec_name}')
+    print(f'Column delimiters = {dialect.delimiter}')
+
+    #header_idx = next(i for i, line in enumerate(lines) if line.startswith('No.'))
+    #header_idx = next(i for i, line in enumerate(lines) if 'ra' in line.lower())
+    header_idx = 0 # assuming no lines to skip before header for now
 
     df = pd.read_csv(file_in,
-                    sep='|',
+                    sep=dialect.delimiter,
                     skiprows=header_idx,
                     header=0,
                     skipinitialspace=True)
+    
+    ra_use, dec_use = remove_high_dec(df[ra_name].values.astype(float), 
+                                      df[dec_name].values.astype(float), 
+                                      declim)
+    print(f'Warning: {len(df) - len(ra_use)} input targets are excluded '
+          '(outside of the observable dec range of Rubin)')      
+    print(' ')
 
-    df.columns = df.columns.str.strip()
-    df['Object Name'] = df['Object Name'].str.strip()
-
-    return remove_high_dec(df['RA'].values.astype(float), 
-                           df['DEC'].values.astype(float), declim)
+    return ra_use, dec_use
 
 def _group_targets(ra_list, dec_list, nside):
     """Group targets spatially using HEALPix grid.
