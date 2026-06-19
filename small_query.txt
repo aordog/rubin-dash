@@ -1,22 +1,3 @@
-Results from query to  NASA/IPAC Extragalactic Database (NED),
-which is funded by the National Aeronautics and Space Administration.
-and operated by the California Institute of Technology.
-
-
-queryDateTime:2026-03-11T11:13:19PDT
-
-
-
-Main Information Table for All Sky, chosen by params
-
-
-
-Equinox:J2000.0
-
-
-
-CoordSystem:Equatorial
-
 No.|Object Name|RA|DEC|Type|Velocity|Redshift|Redshift Flag|Magnitude and Filter|Separation|References|Notes|Photometry Points|Positions|Redshift Points|Diameter Points|Associations
 5620|WISEA J212114.15+005215.4|320.30896 |   0.87089 |*|911936| 3.041890 |SLS |20.8g|  0.000|7|0|17|4|2|4|0
 5621|WISEA J212253.64-082014.0|320.72349 |  -8.33718 |*|912868| 3.045000 |PUN |20.7g|  0.000|3|0|17|2|1|4|0
