@@ -82,6 +82,7 @@ def data_loop(
     cur,
     camera,
     user_id: int,
+    flags_present: bool = False,
 ) -> None:
     """Iterate over simulated dates, updating database and state.
 
@@ -123,6 +124,8 @@ def data_loop(
         Camera footprint metadata object for the observing instrument.
     user_id : int
         User identifier for filtering database queries (not relevant yet).
+    flags_present : bool, optional
+        Whether user-defined observability flags are present in the database.
 
     Notes
     -----
@@ -185,7 +188,7 @@ def data_loop(
             fig2_html = fig2_obj.make_html_visits_plot(0, "daily")
             del fig2_obj
             
-            fig3_obj = ObservabilityData(1, 0, cur, date)
+            fig3_obj = ObservabilityData(1, 0, cur, date, flags_present)
             fig3_html = fig3_obj.make_html_obs_plot()
             del fig3_obj
             

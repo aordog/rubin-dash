@@ -68,3 +68,11 @@ CREATE TABLE member_observability (
     hrs_obs    DOUBLE PRECISION DEFAULT 0,
     PRIMARY KEY (time, member_id)
 );
+
+-- 7. One row per source per day (static, written once)
+CREATE TABLE member_obs_flags (
+    time        DATE NOT NULL,
+    member_id   INT REFERENCES members(member_id),
+    obs_flag    INT NOT NULL,
+    PRIMARY KEY (time, member_id)
+);

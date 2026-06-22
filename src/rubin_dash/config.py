@@ -14,8 +14,9 @@ import astropy.units as u
 from astropy import coordinates as coord
 
 ########### USER INPUTS #########
-QUERY_FILE     = "medium_query.txt" # File with user-selected targets
+QUERY_FILE     = "moon_test.csv" # File with user-selected targets
 INITIAL_OFFSET = 0.0               # declination limit to filter targets
+OBS_FLAGS      = True            # Additional observability flags available
 #################################
 
 # Server-side info
@@ -24,7 +25,7 @@ DEFAULT_USER_ID: int  = 1  # User ID. TO DO: REVISIT WHEN ADDING USERS!
 DB_NAME = "lsst_database"  # Name of user-specific database
 #OUTPUT_BASE = Path("/home/aordog/Dropbox/candiapl/rubin-dash-out/")
 OUTPUT_BASE = Path(__file__).parent.parent.parent
-DAYS_FORECAST = 60 # Number of days for which to calculate observability
+DAYS_FORECAST = 30 # Number of days for which to calculate observability
 LOC = coord.EarthLocation.of_site('LSST') # Rubin location for obs. plots
 
 # Simulated LSST survey (for testing)

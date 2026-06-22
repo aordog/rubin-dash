@@ -437,7 +437,7 @@ def _make_html_visits_plot(data, idx_mem, maptype):
 
     return fig_html
 
-def _populate_observability(gid, idx_mem, cur, date):
+def _populate_observability(gid, idx_mem, cur, date, flags_present):
     """Query and format observability forecast data from database.
 
     Fetches observability hours for a specific target over the forecast
@@ -491,6 +491,24 @@ def _populate_observability(gid, idx_mem, cur, date):
     # Convert list of date strings to astropy Time object for use in plotting
     if data['days_utc']:
         data['days_utc'] = Time(data['days_utc'])
+
+    if flags_present:
+        # Extract the user-defined observability hours for the 60 days
+        cur.execute("""
+            SELECT time, obs_flag FROM member_obs_flags
+            WHERE member_id = %s AND time BETWEEN %s AND %s
+            ORDER BY time
+        """, (mem_id, date, str(Time(date)+timedelta(days=DAYS_FORECAST))))
+        rows = cur.fetchall()
+
+        flags = []
+
+        for row in rows:
+            #flip flag sign to allow filtering by multiplication
+            flags.append(1 - row['obs_flag']) 
+        print(len(data['hours']))
+        print(len(flags))
+        data['hours'] = data['hours'] * np.array(flags)
 
     return data
 
@@ -899,10 +917,10 @@ class ObservabilityData:
         observable hours per day.
     """
 
-    def __init__(self, gid, idx_mem, cur, date, 
+    def __init__(self, gid, idx_mem, cur, date, flags_present,
                  description: str = "Observability data object"):
         self.description = description
-        self.data = _populate_observability(gid, idx_mem, cur, date)
+        self.data = _populate_observability(gid, idx_mem, cur, date, flags_present)
 
     def make_html_obs_plot(self, selected_date=None, window_days=5):
         """Generate observability forecast visualization as HTML for 

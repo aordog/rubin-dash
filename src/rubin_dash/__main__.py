@@ -105,12 +105,14 @@ def main() -> None:
     set_up_db()
     logging.getLogger("werkzeug").addFilter(QuietFilter())
 
-    camera, conn, cur = initialize_tracking(
+    camera, conn, cur, flags_present = initialize_tracking(
         DEFAULT_USER_ID, QUERY_FILE, INITIAL_OFFSET,
     )
 
     # ── Populate database with historical data ──────────────────
     populate_history(conn, cur, camera, DEFAULT_USER_ID)
+
+    # ── Populate database with observabillity data ──────────────
     initialize_forecast(conn, cur, DEFAULT_USER_ID)
 
     # ── Shared state & Flask app ────────────────────────────────
@@ -118,6 +120,7 @@ def main() -> None:
     app = create_app(
         shared_state,
         conn,
+        flags_present=flags_present,
         template_folder=_PROJECT_ROOT / "templates",
         static_folder=_PROJECT_ROOT / "static",
     )
@@ -133,7 +136,7 @@ def main() -> None:
 
     data_thread = threading.Thread(
         target=data_loop,
-        args=(shared_state, conn, cur, camera, DEFAULT_USER_ID),
+        args=(shared_state, conn, cur, camera, DEFAULT_USER_ID, flags_present),
         daemon=True,
     )
     data_thread.start()

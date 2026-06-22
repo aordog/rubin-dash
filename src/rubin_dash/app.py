@@ -30,6 +30,7 @@ def create_app(
     shared_state: SharedState,
     conn,
     *,
+    flags_present: bool = False,
     template_folder: str | Path | None = None,
     static_folder: str | Path | None = None,
 ) -> Flask:
@@ -47,6 +48,8 @@ def create_app(
     conn : psycopg2.extensions.connection
         PostgreSQL database connection, kept open for the lifetime of the 
         process. Used by route handlers to query the user-specific database.
+    flags_present : bool, optional
+        Whether user-defined observability flags are present in the database.
     template_folder : str | Path | None, optional
         Specify the Flask template search path.
     static_folder : str | Path | None, optional
@@ -101,7 +104,7 @@ def create_app(
         try:
             fig1_html=TargetMap(gn,local_cur).make_html_visits_map(mn,maptype)
             fig2_html=TargetTimeSeries(gn,mn,local_cur).make_html_visits_plot(mn,maptype)
-            fig3_html=ObservabilityData(gn,mn,local_cur,date).make_html_obs_plot()
+            fig3_html=ObservabilityData(gn,mn,local_cur,date, flags_present).make_html_obs_plot()
             #fig3_html = ""  # DISABLED FOR TESTING
         finally:
             local_cur.close()
@@ -140,6 +143,7 @@ def create_app(
             table_html=snap["table"],
             version=snap["version"],
             countdown_seconds=max(0, snap["next_update"] - time.time()),
+            flags_present=flags_present,
         )
 
     @app.route("/row_clicked", methods=["POST"])
@@ -247,7 +251,7 @@ def create_app(
         
         local_cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
-            fig3_html = ObservabilityData(gn, mn, local_cur, date).make_html_obs_plot(
+            fig3_html = ObservabilityData(gn, mn, local_cur, date, flags_present).make_html_obs_plot(
                 selected_date=selected_date, 
                 window_days=window_days
             )
