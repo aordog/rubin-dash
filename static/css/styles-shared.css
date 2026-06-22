@@ -146,6 +146,13 @@ h2 {
     border-bottom: 1px solid var(--c-outlines);
 }
 
+#flag-message {
+    text-align: center;
+    font-size: 14px;
+    color: var(--c-headers);
+    padding: 8px 0;
+}
+
 /* ---------- Countdown to next refresh ---------- */
 #countdown-display {
     text-align: center;

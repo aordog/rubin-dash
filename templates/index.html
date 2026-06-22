@@ -34,6 +34,12 @@
                         <button class="maptype-btn active" data-maptype="daily" onclick="sendMapType('daily')">Daily</button>
                         <button class="maptype-btn" data-maptype="total" onclick="sendMapType('total')">Cumulative</button>
                     </div>
+                <!-- User-defined flagging message -->
+                <div id="flag-message">
+                    {% if flags_present %}
+                    * User-define observability flags are active
+                    {% endif %}
+                </div>
                 <!-- Countdown + progress bar -->
                 <div id="countdown-display">
                     <span id="countdown-value">Next update: --</span>

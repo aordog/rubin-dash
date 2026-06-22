@@ -21,7 +21,8 @@ import healpy as hp
 import numpy as np
 import psycopg2
 from psycopg2 import extras
-from datetime import timedelta
+from datetime import timedelta, datetime
+from dateutil.parser import parse
 import csv
 from rubin_dash.utils import (
     remove_high_dec,
@@ -39,7 +40,7 @@ from rubin_dash.observability import daily_observability, get_az_el
 
 import subprocess
 from rubin_dash.config import (
-    DB_NAME, SIM_HIST, SIM_START, QUERY_TYPE, SIM_LSST_DB, DAYS_FORECAST,
+    DB_NAME, SIM_HIST, SIM_START, QUERY_TYPE, SIM_LSST_DB, DAYS_FORECAST, OBS_FLAGS,
 )
 
 BANDS = ('u', 'g', 'r', 'i', 'z', 'y')
@@ -75,7 +76,7 @@ def _read_csv_file(file_in, declim):
     """
 
     with open(file_in, 'r', encoding='utf-8', newline='') as f:
-        sample_data = f.read(2048)
+        sample_data = f.read(4096)
         dialect = csv.Sniffer().sniff(sample_data)
 
     with open(file_in, 'r', encoding='utf-8', newline='') as f:
@@ -101,15 +102,55 @@ def _read_csv_file(file_in, declim):
                     skiprows=header_idx,
                     header=0,
                     skipinitialspace=True)
-    
-    ra_use, dec_use = remove_high_dec(df[ra_name].values.astype(float), 
-                                      df[dec_name].values.astype(float), 
-                                      declim)
+
+    dec_in = df[dec_name].values.astype(float)
+    ra_use  = df[ra_name].values.astype(float)[dec_in < declim]
+    dec_use = df[dec_name].values.astype(float)[dec_in < declim]
+
     print(f'Warning: {len(df) - len(ra_use)} input targets are excluded '
           '(outside of the observable dec range of Rubin)')      
     print(' ')
 
-    return ra_use, dec_use
+    if OBS_FLAGS:
+        print('Reading user-defined observability flags')
+        all_flags = _get_obs_flags(df)
+        for date in all_flags:
+            all_flags[date] = all_flags[date][dec_in < declim]
+    else:
+        all_flags = {}
+
+    return ra_use, dec_use, all_flags
+
+def _get_obs_flags(df):
+
+    all_flags = {}
+
+    for header in list(df):
+        if _is_valid_date(header):
+            all_flags[header] = df[header].values.astype(float)
+
+    return all_flags
+
+def _is_valid_date(s):
+    """
+    Return True if `s` contains an explicit year, month, AND day
+    (optionally with time). Return False otherwise.
+    """
+    # Two deliberately different defaults. If a field is missing from the
+    # string, dateutil pulls it from the default, so it will differ here.
+    default1 = datetime(2000, 1, 1, 0, 0, 0)
+    default2 = datetime(2099, 12, 2, 1, 1, 1)
+
+    try:
+        d1 = parse(s, default=default1)
+        d2 = parse(s, default=default2)
+    except (ValueError, OverflowError):
+        return False
+
+    # year, month, and day must be unaffected by the default -> they were
+    # actually present in the string.
+    return (d1.year, d1.month, d1.day) == (d2.year, d2.month, d2.day)
+
 
 def _group_targets(ra_list, dec_list, nside):
     """Group targets spatially using HEALPix grid.
@@ -389,6 +430,29 @@ def _insert_observability(cur, date, member_id, hrs):
         VALUES (%s, %s, %s)
     """, (date, member_id_value, hrs_value))
 
+def _insert_obs_flags(cur, date, member_id, flag):
+    """
+    Parameters
+    ----------
+    cur : psycopg2.cursor
+        Database cursor for executing the insert.
+    date : str
+        Date string (YYYY-MM-DD) for the observations.
+    member_id : int
+        Database ID of the target member.
+    """
+
+    # Convert numpy types to native Python types for database compatibility
+    member_id_value = int(member_id) if isinstance(member_id, (np.integer, np.int64)) else member_id
+    #hrs_value = float(hrs) if isinstance(hrs, (np.floating, np.integer)) else hrs
+    flag_values = int(flag)
+
+    cur.execute(f"""
+        INSERT INTO member_obs_flags
+               (time, member_id, obs_flag)
+        VALUES (%s, %s, %s)
+    """, (date, member_id_value, flag_values))
+
 def _compute_visits(ra_mem, dec_mem, ra_grid, dec_grid, mask):
     """Count visits for a group member target from a mask grid.
 
@@ -601,7 +665,7 @@ def initialize_tracking(user_id, file_in, declim):
     """
 
     # Read in the target list:
-    ra_t_list, dec_t_list = _read_csv_file(file_in, declim)
+    ra_t_list, dec_t_list, all_flags = _read_csv_file(file_in, declim)
 
     print('====================================================')
     print('')
@@ -627,10 +691,22 @@ def initialize_tracking(user_id, file_in, declim):
 
     # Get the camera information
     camera = get_camera()
+
+    if all_flags:
+        print('*******************')
+        flags_present = True
+        print('Populating database with user-defined observability flags')
+        for date in all_flags.keys():
+            populate_obs_flags(conn, cur, user_id, date, all_flags[date])
+
+        print('*******************')
+    else:
+        flags_present = False
+
     print('')
     print('====================================================')
 
-    return camera, conn, cur
+    return camera, conn, cur, flags_present
 
 def initialize_forecast(conn, cur, user_id):
     """Initialize and populate observability forecast for all targets.
@@ -840,3 +916,40 @@ def populate_database(conn, cur, camera, user_id, visits, date, shared_state=Non
 
     return
 
+def populate_obs_flags(conn, cur, user_id, date, flags):
+    """Populate user observability .
+
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Database connection for transaction management.
+    cur : psycopg2.cursor (DictCursor)
+        Database cursor for query execution.
+    user_id : int
+        User ID identifying which targets to process.
+    date : str
+        Date string (YYYY-MM-DD) for observability calculation.
+    """
+
+    print(f'Populating user-defined observability for {date}')
+
+    # Query all members for this user directly, joining with groups table
+    # to filter by user_id:
+    cur.execute("""
+        SELECT m.member_id, m.ra_mem, m.dec_mem FROM members m
+        JOIN groups g ON m.group_id = g.group_id
+        WHERE g.user_id = %s
+        ORDER BY m.group_id, m.member_idx
+        """, (user_id,))
+    
+    # Process each member:
+    members  = cur.fetchall()
+    mem_ids  = np.array([mem['member_id'] for mem in members])
+
+
+    for i in range(0,len(mem_ids)):
+        _insert_obs_flags(cur, date, mem_ids[i], flags[i])
+
+    conn.commit()
+
+    return
